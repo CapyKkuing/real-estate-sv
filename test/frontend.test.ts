@@ -64,6 +64,8 @@ describe("Cloudflare frontend", () => {
     expect(script).toContain("loadDetailBuilding")
     expect(script).toContain("loadDetailLandUse")
     expect(script).toContain("loadDetailOrdinance")
+    expect(script).toContain("isDemoDataResponse")
+    expect(script).toContain("개발용 더미 데이터")
     expect(script).toContain("isAnalysisReady")
     expect(html).toContain('<input type="checkbox" name="type" value="apt" checked>')
     expect(html).toContain('<input type="checkbox" name="transaction-mode" value="trade" checked>')

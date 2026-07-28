@@ -1,6 +1,6 @@
 export const RENT_SUPPORTED_TYPES = new Set(['apt', 'rhous', 'shous', 'office']);
 
-export function mapRentTransaction(item, typeNames) {
+export function mapRentTransaction(item, typeNames, source = '국토교통부 전월세 실거래가 Open API', confidence = '공식 전월세 거래 확인') {
     const name = item.propertyName || `${item.districtName || ''} ${item.jibun || ''}`.trim() || '매물정보 없음';
     return {
         transactionMode: 'rent', rentType: item.rentType, name,
@@ -13,7 +13,7 @@ export function mapRentTransaction(item, typeNames) {
         renewalRightUsed: item.renewalRightUsed,
         previousDeposit: item.previousDepositTenThousandWon,
         previousMonthlyRent: item.previousMonthlyRentTenThousandWon,
-        source: '국토교통부 전월세 실거래가 Open API', confidence: '공식 전월세 거래 확인'
+        source, confidence
     };
 }
 

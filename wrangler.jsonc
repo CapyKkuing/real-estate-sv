@@ -11,7 +11,7 @@
     "html_handling": "auto-trailing-slash"
   },
   "secrets": {
-    "required": ["DATA_GO_KR_SERVICE_KEY", "VWORLD_API_KEY", "LAW_API_OC"]
+    "required": ["DATA_GO_KR_SERVICE_KEY", "VWORLD_API_KEY", "LAW_API_OC", "OFFICIAL_PROXY_URL", "OFFICIAL_PROXY_TOKEN"]
   },
   "d1_databases": [
     {
@@ -34,5 +34,33 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
+  },
+  "env": {
+    "demo": {
+      "vars": {
+        "OFFICIAL_DATA_MODE": "demo"
+      },
+      "secrets": {
+        "required": []
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "real-estate-sv-db",
+          "database_id": "3844b625-14db-48e9-aa92-74065f0f0584",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "20260714",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ]
+    }
   }
 }

@@ -16,6 +16,7 @@ import { formatRentPrice, mapRentTransaction, RENT_SUPPORTED_TYPES } from './ren
 
 // 국토부 API 키는 Cloudflare Worker Secret에서만 사용합니다.
 const API_ENDPOINT = '/api/real-estate';
+const DEMO_SOURCE = '개발용 더미 데이터 (공식 연동 대기)';
 
 // 1. 전국 17개 시/도 + 주요 시/군/구 법정동코드 (행정안전부 기준)
 // ===================================================================
@@ -227,6 +228,7 @@ let preparedQueryKey = '';
 let preparedHadPartialError = false;
 let dongRequestId = 0;
 let isPreparingDongs = false;
+let demoDataActive = false;
 
 const paginationContainer = document.getElementById('pagination-container');
 const pageSizeSelect = document.getElementById('page-size');
@@ -254,13 +256,19 @@ function escapeHtml(value) {
 
 function setQueryStatus(message, state = '') {
     if (!queryStatus) return;
-    queryStatus.innerText = message;
+    queryStatus.innerText = demoDataActive ? `${message} · 개발용 더미 데이터` : message;
     if (state) queryStatus.dataset.state = state;
     else delete queryStatus.dataset.state;
 }
 
 function getSelectedTypes() {
     return Array.from(document.querySelectorAll('input[name="type"]:checked')).map(input => input.value);
+}
+
+function isDemoDataResponse(response) {
+    const isDemo = response.headers.get('X-Data-Mode') === 'demo';
+    if (isDemo) demoDataActive = true;
+    return isDemo;
 }
 
 function getSelectedModes() {
@@ -479,6 +487,7 @@ async function fetchSingleType(type, lawdCd, dealYmd) {
 
     try {
         const response = await fetch(url);
+        const isDemo = isDemoDataResponse(response);
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -600,8 +609,8 @@ async function fetchSingleType(type, lawdCd, dealYmd) {
                 jibun: displayJibun,                // 복구된 지번 적용
                 buildingType: buildingType,          // 건물 용도
                 ...transactionStatus,
-                source: '국토교통부 실거래가 Open API',
-                confidence: location.confidence
+                source: isDemo ? DEMO_SOURCE : '국토교통부 실거래가 Open API',
+                confidence: isDemo ? '개발용 샘플 거래' : location.confidence
             };
         });
     } catch (e) {
@@ -617,16 +626,23 @@ async function fetchSingleRentType(type, lawdCd, dealYmd, selectedModes) {
     if (!RENT_SUPPORTED_TYPES.has(type)) return [];
     const params = new URLSearchParams({ type, lawdCd, dealYmd });
     const response = await fetch(`${API_ENDPOINT}/rent?${params}`);
+    const isDemo = isDemoDataResponse(response);
     if (!response.ok) throw new Error(`rent HTTP ${response.status}`);
     const payload = await response.json();
     return (payload.normalizedRent?.items || [])
         .filter(item => selectedModes.includes(item.rentType))
-        .map(item => mapRentTransaction(item, TYPE_NAMES));
+        .map(item => mapRentTransaction(
+            item,
+            TYPE_NAMES,
+            isDemo ? DEMO_SOURCE : undefined,
+            isDemo ? '개발용 샘플 전월세 거래' : undefined,
+        ));
 }
 
 async function getMultiTypeData() {
     lastQueryHadError = false;
     lastQueryHadPartialError = false;
+    demoDataActive = false;
     const lawdCd = gugunSelect.value;
     const dealYmd = dateSelect.value;
     const selectedCheckboxes = document.querySelectorAll('input[name="type"]:checked');
@@ -701,6 +717,7 @@ async function loadHistoryTrend(query, currentData) {
     const statusResults = await Promise.allSettled(query.selectedTypes.map(async type => {
         const params = new URLSearchParams({ type, lawdCd: query.lawdCd, dealYmd: query.dealYmd });
         const response = await fetch(`${API_ENDPOINT}/history?${params}`);
+        isDemoDataResponse(response);
         if (!response.ok) throw new Error(`history HTTP ${response.status}`);
         return { type, payload: await response.json() };
     }));
@@ -723,6 +740,12 @@ async function loadHistoryTrend(query, currentData) {
     const combined = [...currentData, ...historicalData];
     const filtered = query.dong ? combined.filter(item => item.umdNm === query.dong) : combined;
     renderTrend(filtered);
+
+    if (demoDataActive) {
+        const loadedMonths = new Set(filtered.map(item => item.date?.slice(0, 7)).filter(Boolean)).size;
+        setQueryStatus(`${filteredData.length.toLocaleString()}건 분석 완료 · 추이 ${loadedMonths}개월 표시`, 'warning');
+        return filtered;
+    }
 
     if (statusResults.some(result => result.status === 'rejected')) {
         setQueryStatus('기준 월 분석은 완료했지만 과거 수집 상태 일부를 확인하지 못했습니다.', 'warning');
@@ -952,6 +975,7 @@ async function loadDetailPnu(item) {
     try {
         const params = new URLSearchParams({ address, jibun: item.jibun });
         const response = await fetch(`${API_ENDPOINT}/pnu?${params}`);
+        const isDemo = isDemoDataResponse(response);
         if (!response.ok) {
             detailPnu.innerText = response.status === 404 ? '공식 코드 매칭 실패' : '조회 실패';
             return;
@@ -964,7 +988,7 @@ async function loadDetailPnu(item) {
             detailOrdinance.innerText = 'PNU 매칭 실패';
             return;
         }
-        detailPnu.innerText = result.pnu;
+        detailPnu.innerText = `${result.pnu}${isDemo ? ' · 개발용 더미' : ''}`;
         void loadDetailBuilding(result.pnu);
         void loadDetailLandUse(result.pnu);
     } catch (error) {
@@ -981,6 +1005,7 @@ async function loadDetailLandUse(pnu) {
     detailOrdinance.innerText = '토지이용계획 확인 후 조회';
     try {
         const response = await fetch(`${API_ENDPOINT}/land-use?${new URLSearchParams({ pnu })}`);
+        const isDemo = isDemoDataResponse(response);
         if (!response.ok) {
             detailLandUse.innerText = response.status === 503 ? '운영 토지이용 API 키 설정 필요' : '조회 실패';
             return;
@@ -993,7 +1018,7 @@ async function loadDetailLandUse(pnu) {
         }
         const zoning = result.zoning ? `${result.zoning.name} · 기준 ${result.zoning.sourceUpdatedOn || '자료 없음'}` : '용도지역 자료 없음';
         const restrictions = result.restrictions.length ? ` · ${result.restrictions.map(item => item.name).join(', ')}` : '';
-        detailLandUse.innerText = `${zoning}${restrictions}`;
+        detailLandUse.innerText = `${zoning}${restrictions}${isDemo ? ' · 개발용 더미' : ''}`;
         if (result.zoning) {
             const sidoName = sidoSelect.options[sidoSelect.selectedIndex]?.text || '';
             const gugunName = gugunSelect.options[gugunSelect.selectedIndex]?.text || '';
@@ -1017,6 +1042,7 @@ async function loadDetailOrdinance(query) {
     detailOrdinance.innerText = '조례 상한 확인 중';
     try {
         const response = await fetch(`${API_ENDPOINT}/ordinance?${new URLSearchParams(query)}`);
+        const isDemo = isDemoDataResponse(response);
         if (!response.ok) {
             detailOrdinance.innerText = response.status === 503 ? '운영 법령 API 인증값 설정 필요' : '조회 실패';
             return;
@@ -1026,7 +1052,7 @@ async function loadDetailOrdinance(query) {
             detailOrdinance.innerText = '공식 조례 자료 없음';
             return;
         }
-        const source = `${result.source.title} · 시행 ${result.source.effectiveOn || '자료 없음'}`;
+        const source = `${isDemo ? '개발용 더미 · ' : ''}${result.source.title} · 시행 ${result.source.effectiveOn || '자료 없음'}`;
         const sourceLink = result.source.sourceUrl
             ? ` · <a href="${escapeHtml(result.source.sourceUrl)}" target="_blank" rel="noreferrer">공식 원문</a>`
             : '';
@@ -1046,6 +1072,7 @@ async function loadDetailBuilding(pnu) {
     detailBuilding.innerText = '건축물대장 확인 중';
     try {
         const response = await fetch(`${API_ENDPOINT}/building?${new URLSearchParams({ pnu })}`);
+        const isDemo = isDemoDataResponse(response);
         if (!response.ok) {
             detailBuilding.innerText = response.status === 404 ? '등록 건축물 없음' : '조회 실패';
             return;
@@ -1059,7 +1086,7 @@ async function loadDetailBuilding(pnu) {
         const name = building.name ? `${building.name} · ` : '';
         const coverage = building.buildingCoveragePercent === null ? '건폐율 자료 없음' : `건폐율 ${building.buildingCoveragePercent}%`;
         const floorArea = building.floorAreaRatioPercent === null ? '용적률 자료 없음' : `용적률 ${building.floorAreaRatioPercent}%`;
-        detailBuilding.innerText = `${name}${building.primaryPurpose} · 연면적 ${Number(building.totalFloorAreaSquareMeters).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡ · ${building.aboveGroundFloorCount}/${building.belowGroundFloorCount}층 · ${coverage} · ${floorArea} · 사용승인 ${building.approvedOn}`;
+        detailBuilding.innerText = `${name}${building.primaryPurpose} · 연면적 ${Number(building.totalFloorAreaSquareMeters).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡ · ${building.aboveGroundFloorCount}/${building.belowGroundFloorCount}층 · ${coverage} · ${floorArea} · 사용승인 ${building.approvedOn}${isDemo ? ' · 개발용 더미' : ''}`;
     } catch (error) {
         if (error instanceof TypeError || error instanceof SyntaxError) {
             detailBuilding.innerText = '조회 실패';

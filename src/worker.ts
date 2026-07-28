@@ -8,6 +8,13 @@ import { handleOrdinanceRequest } from "./ordinance-response"
 import { resolveTransactionRequest } from "./rent-endpoints"
 import { readStoredTransactionFallback } from "./stored-transaction-response"
 import { persistTransactionCollection } from "./transaction-ingestion"
+import {
+  createDemoOfficialFetch,
+  handleDemoHistoryRequest,
+  isDemoOfficialDataMode,
+  type OfficialDataMode,
+} from "./demo-official-data"
+import { createOfficialProxyFetch } from "./official-proxy"
 import type { TransactionMode } from "./rent-endpoints"
 import { transformTransactionResponse } from "./transaction-response"
 import type { PropertyType } from "./transaction-query"
@@ -19,6 +26,7 @@ type WaitUntil = ExecutionContext["waitUntil"]
 
 export type ApiDependencies = {
   readonly serviceKey: string
+  readonly dataMode?: OfficialDataMode
   readonly fetchUpstream: typeof fetch
   readonly rateLimiter?: RateLimiter
   readonly cache?: CacheStore
@@ -39,6 +47,7 @@ type WorkerBindings = {
   readonly serviceKey: string
   readonly vworldKey?: string
   readonly lawApiOc?: string
+  readonly dataMode?: OfficialDataMode
   readonly fetchAsset: AssetFetcher
   readonly adminToken?: string
 }
@@ -230,6 +239,7 @@ export async function routeRequest(
     })
   }
   if (url.pathname === "/api/real-estate/history") {
+    if (dependencies.dataMode === "demo") return handleDemoHistoryRequest(request)
     return handleHistoryRequest(request, dependencies.database)
   }
   if (url.pathname === "/api/real-estate/pnu") {
@@ -255,43 +265,75 @@ export async function routeRequest(
 
 type RequestDependencies = Omit<ApiDependencies, "serviceKey">
 
+function markDemoDataResponse(response: Response): Response {
+  const headers = new Headers(response.headers)
+  headers.set("X-Data-Mode", "demo")
+  headers.set("X-Data-Source", "demo")
+  headers.set("Cache-Control", "no-store")
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
 export function createWorkerHandler(defaultDependencies: RequestDependencies = { fetchUpstream: fetch }) {
   return (
     request: Request,
     bindings: WorkerBindings,
     requestDependencies: RequestDependencies = defaultDependencies,
-  ) =>
-    routeRequest(
+  ) => {
+    const response = routeRequest(
       request,
-      { serviceKey: bindings.serviceKey, vworldKey: bindings.vworldKey, lawApiOc: bindings.lawApiOc, adminToken: bindings.adminToken, ...requestDependencies },
+      {
+        serviceKey: bindings.serviceKey,
+        dataMode: bindings.dataMode,
+        vworldKey: bindings.vworldKey ?? (bindings.dataMode === "demo" ? "demo-key" : undefined),
+        lawApiOc: bindings.lawApiOc ?? (bindings.dataMode === "demo" ? "demo-oc" : undefined),
+        adminToken: bindings.adminToken,
+        ...requestDependencies,
+      },
       bindings.fetchAsset,
     )
+    if (bindings.dataMode !== "demo" || !new URL(request.url).pathname.startsWith("/api/real-estate")) return response
+    return response.then(markDemoDataResponse)
+  }
 }
 
 const workerHandler = createWorkerHandler({ fetchUpstream: fetch })
 
-type WorkerEnv = Env & { readonly ADMIN_API_TOKEN?: string; readonly VWORLD_API_KEY?: string; readonly LAW_API_OC?: string }
+type WorkerEnv = Env & {
+  readonly ADMIN_API_TOKEN?: string
+  readonly VWORLD_API_KEY?: string
+  readonly LAW_API_OC?: string
+  readonly OFFICIAL_PROXY_URL?: string
+  readonly OFFICIAL_PROXY_TOKEN?: string
+  readonly OFFICIAL_DATA_MODE?: string
+}
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
+    const dataMode = isDemoOfficialDataMode(env.OFFICIAL_DATA_MODE) ? "demo" : undefined
     return workerHandler(
       request,
       {
-        serviceKey: env.DATA_GO_KR_SERVICE_KEY,
+        serviceKey: env.DATA_GO_KR_SERVICE_KEY ?? "",
         vworldKey: env.VWORLD_API_KEY,
         lawApiOc: env.LAW_API_OC,
+        dataMode,
         adminToken: env.ADMIN_API_TOKEN,
         fetchAsset: (assetRequest) => env.ASSETS.fetch(assetRequest),
       },
       {
-        fetchUpstream: fetch,
+        fetchUpstream: dataMode === "demo"
+          ? createDemoOfficialFetch()
+          : createOfficialProxyFetch({
+              proxyUrl: env.OFFICIAL_PROXY_URL,
+              token: env.OFFICIAL_PROXY_TOKEN,
+            }),
         rateLimiter: env.API_RATE_LIMITER,
-        cache: caches.default,
+        cache: dataMode === "demo" ? undefined : caches.default,
         waitUntil: ctx.waitUntil.bind(ctx),
-        database: env.DB,
-        buildingDatabase: env.DB,
-        landUseDatabase: env.DB,
-        ordinanceDatabase: env.DB,
+        database: dataMode === "demo" ? undefined : env.DB,
+        buildingDatabase: dataMode === "demo" ? undefined : env.DB,
+        landUseDatabase: dataMode === "demo" ? undefined : env.DB,
+        ordinanceDatabase: dataMode === "demo" ? undefined : env.DB,
         adminDatabase: env.DB,
       },
     )
