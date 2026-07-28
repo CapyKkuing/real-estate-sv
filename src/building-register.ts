@@ -10,6 +10,8 @@ export type BuildingRegisterResult =
         readonly totalFloorAreaSquareMeters: number
         readonly aboveGroundFloorCount: number
         readonly belowGroundFloorCount: number
+        readonly buildingCoveragePercent: number | null
+        readonly floorAreaRatioPercent: number | null
         readonly approvedOn: string
       }
     }
@@ -47,6 +49,12 @@ function compactDate(value: unknown): string | undefined {
   return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`
 }
 
+function optionalPercent(value: unknown, maximum: number): number | null | undefined {
+  if (value === undefined || value === null || value === "") return null
+  const parsed = numberValue(value)
+  return parsed === undefined || parsed < 0 || parsed > maximum ? undefined : parsed
+}
+
 export function normalizeBuildingRegister(
   buildingKey: string,
   item: Readonly<Record<string, unknown>>,
@@ -56,6 +64,8 @@ export function normalizeBuildingRegister(
   const totalFloorArea = numberValue(item.totArea)
   const aboveGroundFloorCount = numberValue(item.grndFlrCnt)
   const belowGroundFloorCount = numberValue(item.ugrndFlrCnt)
+  const buildingCoveragePercent = optionalPercent(item.bcRat, 100)
+  const floorAreaRatioPercent = optionalPercent(item.vlRat, 5000)
   const approvedOn = compactDate(item.useAprDay)
   if (text(item.useAprDay) && !approvedOn) {
     return { kind: "rejected", reason: "invalid-approval-date" }
@@ -72,6 +82,8 @@ export function normalizeBuildingRegister(
     belowGroundFloorCount === undefined ||
     !Number.isInteger(belowGroundFloorCount) ||
     belowGroundFloorCount < 0 ||
+    buildingCoveragePercent === undefined ||
+    floorAreaRatioPercent === undefined ||
     !approvedOn
   ) {
     return { kind: "rejected", reason: "invalid-record" }
@@ -87,6 +99,8 @@ export function normalizeBuildingRegister(
       totalFloorAreaSquareMeters: totalFloorArea,
       aboveGroundFloorCount,
       belowGroundFloorCount,
+      buildingCoveragePercent,
+      floorAreaRatioPercent,
       approvedOn,
     },
   }

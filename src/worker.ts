@@ -1,6 +1,10 @@
 import { fetchAllMolitPages, type MolitPageSnapshot } from "./molit-pagination"
 import { handleAdminDataStatus, loadAdminDataStatus } from "./admin-data-status"
 import { handleHistoryRequest } from "./history-response"
+import { handlePnuRequest } from "./pnu-response"
+import { handleBuildingRequest } from "./building-response"
+import { handleLandUseRequest } from "./land-use-response"
+import { handleOrdinanceRequest } from "./ordinance-response"
 import { resolveTransactionRequest } from "./rent-endpoints"
 import { readStoredTransactionFallback } from "./stored-transaction-response"
 import { persistTransactionCollection } from "./transaction-ingestion"
@@ -20,6 +24,11 @@ export type ApiDependencies = {
   readonly cache?: CacheStore
   readonly waitUntil?: WaitUntil
   readonly database?: SnapshotDatabase
+  readonly buildingDatabase?: D1Database
+  readonly landUseDatabase?: D1Database
+  readonly ordinanceDatabase?: D1Database
+  readonly vworldKey?: string
+  readonly lawApiOc?: string
   readonly now?: () => string
   readonly adminToken?: string
   readonly adminStatusLoader?: AdminStatusLoader
@@ -28,6 +37,8 @@ export type ApiDependencies = {
 
 type WorkerBindings = {
   readonly serviceKey: string
+  readonly vworldKey?: string
+  readonly lawApiOc?: string
   readonly fetchAsset: AssetFetcher
   readonly adminToken?: string
 }
@@ -221,6 +232,18 @@ export async function routeRequest(
   if (url.pathname === "/api/real-estate/history") {
     return handleHistoryRequest(request, dependencies.database)
   }
+  if (url.pathname === "/api/real-estate/pnu") {
+    return handlePnuRequest(request, dependencies)
+  }
+  if (url.pathname === "/api/real-estate/building") {
+    return handleBuildingRequest(request, { ...dependencies, database: dependencies.buildingDatabase })
+  }
+  if (url.pathname === "/api/real-estate/land-use") {
+    return handleLandUseRequest(request, { ...dependencies, database: dependencies.landUseDatabase })
+  }
+  if (url.pathname === "/api/real-estate/ordinance") {
+    return handleOrdinanceRequest(request, { ...dependencies, database: dependencies.ordinanceDatabase })
+  }
   if (url.pathname === "/api/real-estate/rent") {
     return handleApiRequest(request, dependencies, "rent")
   }
@@ -240,14 +263,14 @@ export function createWorkerHandler(defaultDependencies: RequestDependencies = {
   ) =>
     routeRequest(
       request,
-      { serviceKey: bindings.serviceKey, adminToken: bindings.adminToken, ...requestDependencies },
+      { serviceKey: bindings.serviceKey, vworldKey: bindings.vworldKey, lawApiOc: bindings.lawApiOc, adminToken: bindings.adminToken, ...requestDependencies },
       bindings.fetchAsset,
     )
 }
 
 const workerHandler = createWorkerHandler({ fetchUpstream: fetch })
 
-type WorkerEnv = Env & { readonly ADMIN_API_TOKEN?: string }
+type WorkerEnv = Env & { readonly ADMIN_API_TOKEN?: string; readonly VWORLD_API_KEY?: string; readonly LAW_API_OC?: string }
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -255,6 +278,8 @@ export default {
       request,
       {
         serviceKey: env.DATA_GO_KR_SERVICE_KEY,
+        vworldKey: env.VWORLD_API_KEY,
+        lawApiOc: env.LAW_API_OC,
         adminToken: env.ADMIN_API_TOKEN,
         fetchAsset: (assetRequest) => env.ASSETS.fetch(assetRequest),
       },
@@ -264,6 +289,9 @@ export default {
         cache: caches.default,
         waitUntil: ctx.waitUntil.bind(ctx),
         database: env.DB,
+        buildingDatabase: env.DB,
+        landUseDatabase: env.DB,
+        ordinanceDatabase: env.DB,
         adminDatabase: env.DB,
       },
     )

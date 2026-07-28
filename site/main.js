@@ -3,6 +3,8 @@ import { initComparison } from './comparison.js';
 import { isAnalysisReady } from './query-readiness.js';
 import { resolveTransactionLocation } from './transaction-location.js';
 import { resolveTransactionStatus } from './transaction-status.js';
+import { listPeriodMonths, selectHistoryMonths } from './history-period.js';
+import { formatRentPrice, mapRentTransaction, RENT_SUPPORTED_TYPES } from './rent-transactions.js';
 
 /**
  * 부동산 분석 플랫폼 PRO v15
@@ -170,6 +172,7 @@ const sidoSelect = document.getElementById('sido-select');
 const gugunSelect = document.getElementById('gugun-select');
 const dongSelect = document.getElementById('dong-select');
 const dateSelect = document.getElementById('date-select');
+const periodSelect = document.getElementById('period-select');
 const fetchBtn = document.getElementById('fetch-live-btn');
 const analysisBody = document.getElementById('analysis-body');
 const updateTime = document.getElementById('update-time');
@@ -198,6 +201,13 @@ const detailSize = document.getElementById('detail-size');
 const detailFloor = document.getElementById('detail-floor');
 const detailYear = document.getElementById('detail-year');
 const detailAddress = document.getElementById('detail-address');
+const detailPnu = document.getElementById('detail-pnu');
+const detailBuilding = document.getElementById('detail-building');
+const detailLandUse = document.getElementById('detail-land-use');
+const detailOrdinance = document.getElementById('detail-ordinance');
+const detailContractType = document.getElementById('detail-contract-type');
+const detailRenewalRight = document.getElementById('detail-renewal-right');
+const detailPreviousRent = document.getElementById('detail-previous-rent');
 const detailSource = document.getElementById('detail-source');
 const detailConfidence = document.getElementById('detail-confidence');
 const detailUpdated = document.getElementById('detail-updated');
@@ -253,18 +263,23 @@ function getSelectedTypes() {
     return Array.from(document.querySelectorAll('input[name="type"]:checked')).map(input => input.value);
 }
 
+function getSelectedModes() {
+    return Array.from(document.querySelectorAll('input[name="transaction-mode"]:checked')).map(input => input.value);
+}
+
 function getQuerySelection() {
     return {
         sidoCd: sidoSelect.value,
         lawdCd: gugunSelect.value,
         dealYmd: dateSelect.value,
         selectedTypes: getSelectedTypes(),
+        selectedModes: getSelectedModes(),
         dong: dongSelect.value
     };
 }
 
 function getQueryKey(query = getQuerySelection()) {
-    return [query.lawdCd, query.dealYmd, ...query.selectedTypes.sort()].join('|');
+    return [query.lawdCd, query.dealYmd, ...query.selectedTypes.sort(), ...query.selectedModes.sort()].join('|');
 }
 
 function syncFetchButton() {
@@ -310,9 +325,11 @@ function formatPrice(value) {
 
 function renderMetrics(data) {
     const total = data.length;
-    const cancelled = data.filter(item => item.cancelled);
+    const trades = data.filter(item => item.transactionMode !== 'rent');
+    const rents = data.filter(item => item.transactionMode === 'rent');
+    const cancelled = trades.filter(item => item.cancelled);
     const valid = data.filter(item => !item.cancelled);
-    const prices = valid.map(item => item.price).filter(price => Number.isFinite(price) && price > 0);
+    const prices = trades.filter(item => !item.cancelled).map(item => item.price).filter(price => Number.isFinite(price) && price > 0);
     const median = calculateMedian(prices);
     const average = prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : 0;
     const types = new Set(valid.map(item => item.typeName).filter(Boolean));
@@ -327,13 +344,13 @@ function renderMetrics(data) {
     metricPeriod.innerText = total ? periodLabel : '조회 전';
     resultCount.innerText = `${total.toLocaleString()}건`;
     resultsSummary.innerText = total
-        ? `${periodLabel} · 유효 ${valid.length.toLocaleString()}건 · 취소 ${cancelled.length.toLocaleString()}건`
+        ? `${periodLabel} · 매매 ${trades.length.toLocaleString()}건 · 전월세 ${rents.length.toLocaleString()}건 · 취소 ${cancelled.length.toLocaleString()}건`
         : '조회 조건을 선택하면 거래가 표시됩니다.';
 }
 
 function renderTrend(data) {
     const monthMap = new Map();
-    data.filter(item => !item.cancelled).forEach(item => {
+    data.filter(item => !item.cancelled && item.transactionMode !== 'rent').forEach(item => {
         if (!item.date || !item.price) return;
         const month = item.date.slice(0, 7);
         const current = monthMap.get(month) || [];
@@ -432,6 +449,12 @@ dateSelect.addEventListener('change', () => {
 
 document.querySelectorAll('input[name="type"]').forEach(checkbox => checkbox.addEventListener('change', () => {
     resetDongOptions(gugunSelect.value ? '읍/면/동 불러오는 중' : '시/군/구 선택 후 조회');
+    markQueryDirty();
+    if (gugunSelect.value) prepareDongOptions();
+}));
+
+document.querySelectorAll('input[name="transaction-mode"]').forEach(checkbox => checkbox.addEventListener('change', () => {
+    resetDongOptions(gugunSelect.value ? '읍·면·동을 불러오는 중' : '시/군/구 선택 후 조회');
     markQueryDirty();
     if (gugunSelect.value) prepareDongOptions();
 }));
@@ -590,6 +613,17 @@ async function fetchSingleType(type, lawdCd, dealYmd) {
 /**
  * 체크된 모든 유형에 대해 병렬 API 호출 후 결과 병합
  */
+async function fetchSingleRentType(type, lawdCd, dealYmd, selectedModes) {
+    if (!RENT_SUPPORTED_TYPES.has(type)) return [];
+    const params = new URLSearchParams({ type, lawdCd, dealYmd });
+    const response = await fetch(`${API_ENDPOINT}/rent?${params}`);
+    if (!response.ok) throw new Error(`rent HTTP ${response.status}`);
+    const payload = await response.json();
+    return (payload.normalizedRent?.items || [])
+        .filter(item => selectedModes.includes(item.rentType))
+        .map(item => mapRentTransaction(item, TYPE_NAMES));
+}
+
 async function getMultiTypeData() {
     lastQueryHadError = false;
     lastQueryHadPartialError = false;
@@ -607,10 +641,26 @@ async function getMultiTypeData() {
     }
 
     const selectedTypes = Array.from(selectedCheckboxes).map(cb => cb.value);
+    const selectedModes = getSelectedModes();
+    if (selectedModes.length === 0) {
+        setQueryStatus('거래 구분을 하나 이상 선택해 주세요.', 'error');
+        return null;
+    }
 
     try {
+        const requests = [];
+        selectedTypes.forEach(type => {
+            if (selectedModes.includes('trade')) requests.push({ label: `매매-${type}`, promise: fetchSingleType(type, lawdCd, dealYmd) });
+            if (selectedModes.includes('jeonse') || selectedModes.includes('monthly')) {
+                if (RENT_SUPPORTED_TYPES.has(type)) requests.push({ label: `전월세-${type}`, promise: fetchSingleRentType(type, lawdCd, dealYmd, selectedModes) });
+            }
+        });
+        if (requests.length === 0) {
+            setQueryStatus('선택한 유형은 전월세 조회를 지원하지 않습니다.', 'error');
+            return null;
+        }
         const results = await Promise.allSettled(
-            selectedTypes.map(type => fetchSingleType(type, lawdCd, dealYmd))
+            requests.map(request => request.promise)
         );
 
         let combined = [];
@@ -619,14 +669,14 @@ async function getMultiTypeData() {
         results.forEach((result, i) => {
             if (result.status === 'fulfilled' && result.value) {
                 combined = [...combined, ...result.value];
-                console.log(`[${selectedTypes[i]}] ${result.value.length}건 수집 완료`);
+                console.log(`[${requests[i].label}] ${result.value.length}건 수집 완료`);
             } else if (result.status === 'rejected') {
-                console.error(`[${selectedTypes[i]}] 실패:`, result.reason);
-                failedTypes.push(selectedTypes[i]);
+                console.error(`[${requests[i].label}] 실패:`, result.reason);
+                failedTypes.push(requests[i].label);
             }
         });
 
-        if (failedTypes.length === selectedTypes.length) {
+        if (failedTypes.length === requests.length) {
             lastQueryHadError = true;
             setQueryStatus('데이터 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.', 'error');
             return null;
@@ -643,9 +693,52 @@ async function getMultiTypeData() {
     }
 }
 
+async function loadHistoryTrend(query, currentData) {
+    if (!query.selectedModes.includes('trade')) return currentData;
+    const periodMonths = listPeriodMonths(query.dealYmd, Number(periodSelect.value));
+    if (periodMonths.length <= 1) return currentData;
+
+    const statusResults = await Promise.allSettled(query.selectedTypes.map(async type => {
+        const params = new URLSearchParams({ type, lawdCd: query.lawdCd, dealYmd: query.dealYmd });
+        const response = await fetch(`${API_ENDPOINT}/history?${params}`);
+        if (!response.ok) throw new Error(`history HTTP ${response.status}`);
+        return { type, payload: await response.json() };
+    }));
+
+    const requests = [];
+    let availableCount = 0;
+    let missingCount = 0;
+    statusResults.forEach(result => {
+        if (result.status !== 'fulfilled') return;
+        const selection = selectHistoryMonths(result.value.payload.progress, periodMonths);
+        availableCount += selection.available.length;
+        missingCount += selection.missing.length;
+        selection.monthsToLoad
+            .filter(month => month !== query.dealYmd)
+            .forEach(month => requests.push(fetchSingleType(result.value.type, query.lawdCd, month)));
+    });
+
+    const loaded = await Promise.allSettled(requests);
+    const historicalData = loaded.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+    const combined = [...currentData, ...historicalData];
+    const filtered = query.dong ? combined.filter(item => item.umdNm === query.dong) : combined;
+    renderTrend(filtered);
+
+    if (statusResults.some(result => result.status === 'rejected')) {
+        setQueryStatus('기준 월 분석은 완료했지만 과거 수집 상태 일부를 확인하지 못했습니다.', 'warning');
+        return filtered;
+    }
+    const loadedMonths = new Set(filtered.map(item => item.date?.slice(0, 7)).filter(Boolean)).size;
+    setQueryStatus(
+        `${filteredData.length.toLocaleString()}건 분석 완료 · 추이 ${loadedMonths}개월 표시 · 저장 ${availableCount}개월 · 수집 대기 ${missingCount}개월`,
+        missingCount ? 'warning' : 'success'
+    );
+    return filtered;
+}
+
 async function prepareDongOptions() {
     const query = getQuerySelection();
-    if (!query.sidoCd || !query.lawdCd || !query.dealYmd || query.selectedTypes.length === 0) {
+    if (!query.sidoCd || !query.lawdCd || !query.dealYmd || query.selectedTypes.length === 0 || query.selectedModes.length === 0) {
         const message = query.selectedTypes.length === 0
             ? '부동산 유형 선택 후 조회'
             : '시/군/구 선택 후 조회';
@@ -761,12 +854,13 @@ function exportCsv() {
         return;
     }
 
-    const headers = ['매물 정보', '유형', '상태', '거래 금액(만원)', '계약일', '면적', '면적 기준', '법정동', '지번', '층', '건축연도', '원천 데이터'];
+    const headers = ['매물 정보', '유형', '거래 구분', '거래 금액/보증금(만원)', '월세(만원)', '계약일', '면적', '면적 기준', '법정동', '지번', '층', '건축연도', '원천 데이터'];
     const rows = filteredData.map(item => [
         item.name,
         item.typeName,
-        item.cancelled ? '취소' : '유효',
+        item.transactionMode === 'rent' ? (item.rentType === 'monthly' ? '월세' : '전세') : (item.cancelled ? '취소' : '매매'),
         item.price,
+        item.monthlyRent || '',
         item.date,
         item.size,
         item.sizeLabel,
@@ -808,7 +902,12 @@ function renderTable() {
 
     analysisBody.innerHTML = pageData.map(item => {
         const dataIndex = globalData.indexOf(item);
-        const statusLabel = item.cancelled ? '취소' : '유효';
+        const isRent = item.transactionMode === 'rent';
+        const statusLabel = isRent ? (item.rentType === 'monthly' ? '월세' : '전세') : (item.cancelled ? '취소' : '유효');
+        const priceLabel = isRent ? formatRentPrice(item) : `${item.price.toLocaleString()}만원`;
+        const analysisAction = isRent
+            ? `<span class="area-badge">${escapeHtml(item.sizeLabel)} ${escapeHtml(item.size)}㎡</span>`
+            : `<button class="analyze-btn" type="button" data-action="analyze" data-size="${escapeHtml(item.size)}" data-price="${item.price}" data-label="${escapeHtml(item.sizeLabel)}">평당가 산출</button>`;
         return `
         <tr>
             <td data-column="property" data-label="매물 정보">
@@ -819,10 +918,10 @@ function renderTable() {
                 <span class="type-tag type-${escapeHtml(item.type)}">${escapeHtml(item.typeName)}</span>
                 <span class="transaction-status${item.cancelled ? ' is-cancelled' : ''}">${statusLabel}</span>
             </td>
-            <td data-column="price" data-label="거래 금액" style="font-weight:700; color: var(--accent)">${item.price.toLocaleString()}만원</td>
+            <td data-column="price" data-label="거래 금액" style="font-weight:700; color: var(--accent)">${escapeHtml(priceLabel)}</td>
             <td data-column="date" data-label="계약일">${escapeHtml(item.date)}</td>
             <td data-column="analysis" data-label="면적·평당가" class="analysis-target">
-                <button class="analyze-btn" type="button" data-action="analyze" data-size="${escapeHtml(item.size)}" data-price="${item.price}" data-label="${escapeHtml(item.sizeLabel)}">평당가 산출</button>
+                ${analysisAction}
                 <button class="detail-button" type="button" data-action="detail" data-index="${dataIndex}">상세</button>
             </td>
         </tr>
@@ -838,11 +937,144 @@ function renderTable() {
     syncColumnVisibility();
 }
 
+async function loadDetailPnu(item) {
+    if (!item.jibun || !item.umdNm) {
+        detailPnu.innerText = '지번 정보 부족';
+        return;
+    }
+    const sidoName = sidoSelect.options[sidoSelect.selectedIndex]?.text || '';
+    const gugunName = gugunSelect.options[gugunSelect.selectedIndex]?.text || '';
+    const address = `${sidoName} ${gugunName} ${item.umdNm}`.trim();
+    detailPnu.innerText = '공식 법정동 코드 확인 중';
+    detailBuilding.innerText = 'PNU 확인 중';
+    detailLandUse.innerText = 'PNU 확인 중';
+    detailOrdinance.innerText = 'PNU 확인 중';
+    try {
+        const params = new URLSearchParams({ address, jibun: item.jibun });
+        const response = await fetch(`${API_ENDPOINT}/pnu?${params}`);
+        if (!response.ok) {
+            detailPnu.innerText = response.status === 404 ? '공식 코드 매칭 실패' : '조회 실패';
+            return;
+        }
+        const result = await response.json();
+        if (result.kind !== 'matched') {
+            detailPnu.innerText = '공식 코드 매칭 실패';
+            detailBuilding.innerText = 'PNU 매칭 실패';
+            detailLandUse.innerText = 'PNU 매칭 실패';
+            detailOrdinance.innerText = 'PNU 매칭 실패';
+            return;
+        }
+        detailPnu.innerText = result.pnu;
+        void loadDetailBuilding(result.pnu);
+        void loadDetailLandUse(result.pnu);
+    } catch (error) {
+        if (error instanceof TypeError || error instanceof SyntaxError) {
+            detailPnu.innerText = '조회 실패';
+            return;
+        }
+        throw error;
+    }
+}
+
+async function loadDetailLandUse(pnu) {
+    detailLandUse.innerText = '토지이용계획 확인 중';
+    detailOrdinance.innerText = '토지이용계획 확인 후 조회';
+    try {
+        const response = await fetch(`${API_ENDPOINT}/land-use?${new URLSearchParams({ pnu })}`);
+        if (!response.ok) {
+            detailLandUse.innerText = response.status === 503 ? '운영 토지이용 API 키 설정 필요' : '조회 실패';
+            return;
+        }
+        const result = await response.json();
+        if (result.kind !== 'found') {
+            detailLandUse.innerText = '공식 토지이용계획 없음';
+            detailOrdinance.innerText = '용도지역 자료 없음';
+            return;
+        }
+        const zoning = result.zoning ? `${result.zoning.name} · 기준 ${result.zoning.sourceUpdatedOn || '자료 없음'}` : '용도지역 자료 없음';
+        const restrictions = result.restrictions.length ? ` · ${result.restrictions.map(item => item.name).join(', ')}` : '';
+        detailLandUse.innerText = `${zoning}${restrictions}`;
+        if (result.zoning) {
+            const sidoName = sidoSelect.options[sidoSelect.selectedIndex]?.text || '';
+            const gugunName = gugunSelect.options[gugunSelect.selectedIndex]?.text || '';
+            void loadDetailOrdinance({
+                jurisdictionCode: gugunSelect.value,
+                jurisdictionName: `${sidoName} ${gugunName}`.trim(),
+                zoneCode: result.zoning.code,
+                zoneName: result.zoning.name,
+            });
+        }
+    } catch (error) {
+        if (error instanceof TypeError || error instanceof SyntaxError) {
+            detailLandUse.innerText = '조회 실패';
+            return;
+        }
+        throw error;
+    }
+}
+
+async function loadDetailOrdinance(query) {
+    detailOrdinance.innerText = '조례 상한 확인 중';
+    try {
+        const response = await fetch(`${API_ENDPOINT}/ordinance?${new URLSearchParams(query)}`);
+        if (!response.ok) {
+            detailOrdinance.innerText = response.status === 503 ? '운영 법령 API 인증값 설정 필요' : '조회 실패';
+            return;
+        }
+        const result = await response.json();
+        if (result.kind !== 'found') {
+            detailOrdinance.innerText = '공식 조례 자료 없음';
+            return;
+        }
+        const source = `${result.source.title} · 시행 ${result.source.effectiveOn || '자료 없음'}`;
+        const sourceLink = result.source.sourceUrl
+            ? ` · <a href="${escapeHtml(result.source.sourceUrl)}" target="_blank" rel="noreferrer">공식 원문</a>`
+            : '';
+        detailOrdinance.innerHTML = result.regulation
+            ? `건폐율 ${result.regulation.buildingCoverageLimitPercent}% · 용적률 ${result.regulation.floorAreaRatioLimitPercent}% · ${escapeHtml(source)}${sourceLink}`
+            : `${escapeHtml(source)} · 용도지역 수치 자동 매칭 없음${sourceLink}`;
+    } catch (error) {
+        if (error instanceof TypeError || error instanceof SyntaxError) {
+            detailOrdinance.innerText = '조회 실패';
+            return;
+        }
+        throw error;
+    }
+}
+
+async function loadDetailBuilding(pnu) {
+    detailBuilding.innerText = '건축물대장 확인 중';
+    try {
+        const response = await fetch(`${API_ENDPOINT}/building?${new URLSearchParams({ pnu })}`);
+        if (!response.ok) {
+            detailBuilding.innerText = response.status === 404 ? '등록 건축물 없음' : '조회 실패';
+            return;
+        }
+        const result = await response.json();
+        if (result.kind !== 'found') {
+            detailBuilding.innerText = result.kind === 'ambiguous' ? '건축물 다건: 주소로 확인 필요' : '등록 건축물 없음';
+            return;
+        }
+        const building = result.profile;
+        const name = building.name ? `${building.name} · ` : '';
+        const coverage = building.buildingCoveragePercent === null ? '건폐율 자료 없음' : `건폐율 ${building.buildingCoveragePercent}%`;
+        const floorArea = building.floorAreaRatioPercent === null ? '용적률 자료 없음' : `용적률 ${building.floorAreaRatioPercent}%`;
+        detailBuilding.innerText = `${name}${building.primaryPurpose} · 연면적 ${Number(building.totalFloorAreaSquareMeters).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡ · ${building.aboveGroundFloorCount}/${building.belowGroundFloorCount}층 · ${coverage} · ${floorArea} · 사용승인 ${building.approvedOn}`;
+    } catch (error) {
+        if (error instanceof TypeError || error instanceof SyntaxError) {
+            detailBuilding.innerText = '조회 실패';
+            return;
+        }
+        throw error;
+    }
+}
+
 function openDetail(index) {
     const item = globalData[index];
     if (!item || !detailPanel) return;
-    detailPrice.innerText = formatPrice(item.price);
-    detailStatus.innerText = item.cancelled ? `취소 거래${item.cancelDate ? ` · ${item.cancelDate}` : ''}` : '유효 거래';
+    const isRent = item.transactionMode === 'rent';
+    detailPrice.innerText = isRent ? formatRentPrice(item) : formatPrice(item.price);
+    detailStatus.innerText = isRent ? (item.rentType === 'monthly' ? '월세 계약' : '전세 계약') : (item.cancelled ? `취소 거래${item.cancelDate ? ` · ${item.cancelDate}` : ''}` : '유효 거래');
     detailStatus.classList.toggle('is-cancelled', Boolean(item.cancelled));
     detailName.innerText = item.name || '—';
     detailType.innerText = item.typeName || '—';
@@ -851,6 +1083,12 @@ function openDetail(index) {
     detailFloor.innerText = item.floor || '—';
     detailYear.innerText = item.buildYear || '—';
     detailAddress.innerText = `${item.umdNm || ''} ${item.jibun || ''}`.trim() || '—';
+    void loadDetailPnu(item);
+    detailContractType.innerText = isRent ? (item.contractType || '자료 없음') : '해당 없음';
+    detailRenewalRight.innerText = isRent ? (item.renewalRightUsed === true ? '사용' : item.renewalRightUsed === false ? '미사용' : '자료 없음') : '해당 없음';
+    detailPreviousRent.innerText = isRent && item.previousDeposit !== null && item.previousDeposit !== undefined
+        ? `보증금 ${item.previousDeposit.toLocaleString()}만원${item.previousMonthlyRent ? ` / 월 ${item.previousMonthlyRent.toLocaleString()}만원` : ''}`
+        : '자료 없음';
     detailSource.innerText = item.source || '국토교통부 실거래가 Open API';
     detailConfidence.innerText = item.confidence || '원천 거래 확인';
     detailUpdated.innerText = updateTime.innerText || '조회 시각 미정';
@@ -861,8 +1099,8 @@ function openDetail(index) {
         .slice(0, 5);
     detailHistoryList.innerHTML = related.map(transaction => `
         <article class="detail-history-item">
-            <strong>${escapeHtml(formatPrice(transaction.price))}</strong>
-            <span>${escapeHtml(transaction.date)} · ${transaction.cancelled ? '취소 거래' : '유효 거래'}</span>
+            <strong>${escapeHtml(transaction.transactionMode === 'rent' ? formatRentPrice(transaction) : formatPrice(transaction.price))}</strong>
+            <span>${escapeHtml(transaction.date)} · ${transaction.transactionMode === 'rent' ? (transaction.rentType === 'monthly' ? '월세' : '전세') : (transaction.cancelled ? '취소 거래' : '유효 거래')}</span>
         </article>
     `).join('') || '<p class="history-empty">같은 주소의 추가 거래가 없습니다.</p>';
     detailPanel.hidden = false;
@@ -1089,6 +1327,7 @@ fetchBtn.addEventListener('click', async () => {
             );
 
             saveHistory(filteredData, query.lawdCd, query.dealYmd, query.selectedTypes, query.dong);
+            await loadHistoryTrend(query, filteredData);
         } else {
             comparisonController.setCurrentAvailable(false);
             setQueryStatus(query.dong ? '선택한 읍·면·동에 조건과 일치하는 거래가 없습니다.' : '선택한 시·군·구에 조건과 일치하는 거래가 없습니다.');
@@ -1106,6 +1345,34 @@ fetchBtn.addEventListener('click', async () => {
     setFetchButton(false);
 });
 
+async function loadComparisonRegulation(current) {
+    const item = current.data.find(candidate => candidate.jibun && candidate.umdNm);
+    if (!item) return null;
+    try {
+        const address = `${current.jurisdictionName} ${item.umdNm}`.trim();
+        const pnuResponse = await fetch(`${API_ENDPOINT}/pnu?${new URLSearchParams({ address, jibun: item.jibun })}`);
+        if (!pnuResponse.ok) return null;
+        const pnuResult = await pnuResponse.json();
+        if (pnuResult.kind !== 'matched') return null;
+        const landUseResponse = await fetch(`${API_ENDPOINT}/land-use?${new URLSearchParams({ pnu: pnuResult.pnu })}`);
+        if (!landUseResponse.ok) return null;
+        const landUse = await landUseResponse.json();
+        if (landUse.kind !== 'found' || !landUse.zoning) return null;
+        const ordinanceResponse = await fetch(`${API_ENDPOINT}/ordinance?${new URLSearchParams({
+            jurisdictionCode: current.lawdCd,
+            jurisdictionName: current.jurisdictionName,
+            zoneCode: landUse.zoning.code,
+            zoneName: landUse.zoning.name,
+        })}`);
+        if (!ordinanceResponse.ok) return null;
+        const ordinance = await ordinanceResponse.json();
+        return ordinance.kind === 'found' ? ordinance.regulation : null;
+    } catch (error) {
+        if (error instanceof TypeError || error instanceof SyntaxError) return null;
+        throw error;
+    }
+}
+
 const comparisonController = initComparison(() => {
     if (!filteredData.length) return null;
     const query = getQuerySelection();
@@ -1117,9 +1384,11 @@ const comparisonController = initComparison(() => {
         period: query.dealYmd,
         periodLabel: dateSelect.options[dateSelect.selectedIndex]?.text || query.dealYmd,
         types: query.selectedTypes.map(type => TYPE_NAMES[type]).filter(Boolean).join(', '),
+        lawdCd: query.lawdCd,
+        jurisdictionName: `${sidoName} ${gugunName}`.trim(),
         data: filteredData
     };
-});
+}, loadComparisonRegulation);
 
 // ===================================================================
 // 11. 초기화

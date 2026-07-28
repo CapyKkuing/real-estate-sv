@@ -8,9 +8,14 @@ describe("analysis query readiness", () => {
       lawdCd: "11230",
       dealYmd: "202606",
       selectedTypes: ["apt"],
+      selectedModes: ["trade"],
     }
 
     expect(isAnalysisReady({ ...query, dong: "" })).toBe(true)
     expect(isAnalysisReady({ ...query, dong: "장안동" })).toBe(true)
+  })
+
+  it("requires at least one transaction mode", () => {
+    expect(isAnalysisReady({ sidoCd: "11", lawdCd: "11230", dealYmd: "202606", selectedTypes: ["apt"], selectedModes: [] })).toBe(false)
   })
 })

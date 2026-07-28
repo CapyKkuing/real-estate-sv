@@ -11,7 +11,7 @@
     "html_handling": "auto-trailing-slash"
   },
   "secrets": {
-    "required": ["DATA_GO_KR_SERVICE_KEY"]
+    "required": ["DATA_GO_KR_SERVICE_KEY", "VWORLD_API_KEY", "LAW_API_OC"]
   },
   "d1_databases": [
     {

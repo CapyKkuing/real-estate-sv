@@ -72,6 +72,7 @@
 
                 <div class="type-selector">
                     <div class="type-heading"><span>부동산 유형</span><small>필수 선택</small></div>
+                    <div class="transaction-modes" aria-label="거래 구분"><span class="group-label">거래</span><div class="filter-chips"><label class="chip"><input type="checkbox" name="transaction-mode" value="trade" checked><span>매매</span></label><label class="chip"><input type="checkbox" name="transaction-mode" value="jeonse"><span>전세</span></label><label class="chip"><input type="checkbox" name="transaction-mode" value="monthly"><span>월세</span></label></div><small>전월세: 주거·오피스텔</small></div>
                     <div class="type-groups">
                         <div class="type-group">
                             <span class="group-label">주거</span>
@@ -99,6 +100,7 @@
                     <label class="field"><span>시·군·구</span><select id="gugun-select" disabled><option value="">시/군/구 선택</option></select></label>
                     <label class="field"><span>기준 월</span><select id="date-select" disabled></select></label>
                     <label class="field"><span>읍·면·동 <small>선택</small></span><select id="dong-select" disabled><option value="">시/군/구 선택 후 조회</option></select></label>
+                    <label class="field"><span>분석 기간</span><select id="period-select"><option value="1">1개월</option><option value="3">3개월</option><option value="6" selected>6개월</option><option value="12">1년</option><option value="36">3년</option><option value="60">5년</option></select></label>
                     <button id="fetch-live-btn" class="primary-button" type="button" disabled><span class="button-icon">↗</span><span>분석 시작</span></button>
                 </div>
                 <p id="query-status" class="query-status" role="status">유형과 지역을 선택하면 최신 신고 데이터를 불러옵니다.</p>
@@ -140,7 +142,7 @@
                 <p id="comparison-status" class="query-status" role="status">먼저 지역 분석을 완료해 주세요.</p>
                 <div class="comparison-table-shell" tabindex="0" aria-label="비교 결과 가로 스크롤 영역">
                     <table class="comparison-table" aria-describedby="comparison-status">
-                        <thead><tr><th>대상</th><th>기준 월</th><th>거래량</th><th>중앙 거래가</th><th>평당가</th><th>전월세 지표</th><th>기본 공법</th><th><span class="sr-only">관리</span></th></tr></thead>
+                        <thead><tr><th>대상</th><th>기준 월</th><th>거래량</th><th>중앙 거래가</th><th>평당가</th><th>전월세 지표</th><th>조례 상한</th><th><span class="sr-only">관리</span></th></tr></thead>
                         <tbody id="comparison-table-body"><tr><td colspan="8" class="comparison-empty">비교할 분석 결과를 추가해 주세요.</td></tr></tbody>
                     </table>
                 </div>
@@ -166,9 +168,9 @@
             <aside id="detail-panel" class="detail-panel" aria-labelledby="detail-title" hidden>
                 <div class="detail-heading"><div><p class="eyebrow">TRANSACTION DETAIL</p><h2 id="detail-title">거래 상세</h2></div><button id="detail-close" class="icon-button" type="button" aria-label="거래 상세 닫기">×</button></div>
                 <div class="detail-summary"><strong id="detail-price">—</strong><span id="detail-status" class="detail-status">유효 거래</span></div>
-                <dl class="detail-list"><div><dt>부동산</dt><dd id="detail-name">—</dd></div><div><dt>유형</dt><dd id="detail-type">—</dd></div><div><dt>계약일</dt><dd id="detail-date">—</dd></div><div><dt>면적</dt><dd id="detail-size">—</dd></div><div><dt>층</dt><dd id="detail-floor">—</dd></div><div><dt>건축년도</dt><dd id="detail-year">—</dd></div><div><dt>주소</dt><dd id="detail-address">—</dd></div><div><dt>원천 데이터</dt><dd id="detail-source">—</dd></div><div><dt>확인 상태</dt><dd id="detail-confidence">—</dd></div><div><dt>조회 시각</dt><dd id="detail-updated">—</dd></div><div><dt>규제 정보</dt><dd>공식 토지이용·건축물 데이터 연동 예정</dd></div></dl>
+                <dl class="detail-list"><div><dt>부동산</dt><dd id="detail-name">—</dd></div><div><dt>유형</dt><dd id="detail-type">—</dd></div><div><dt>계약일</dt><dd id="detail-date">—</dd></div><div><dt>면적</dt><dd id="detail-size">—</dd></div><div><dt>층</dt><dd id="detail-floor">—</dd></div><div><dt>건축년도</dt><dd id="detail-year">—</dd></div><div><dt>주소</dt><dd id="detail-address">—</dd></div><div><dt>PNU</dt><dd id="detail-pnu">상세 조회 시 확인</dd></div><div><dt>건축물대장</dt><dd id="detail-building">PNU 확인 후 조회</dd></div><div><dt>토지이용계획</dt><dd id="detail-land-use">PNU 확인 후 조회</dd></div><div><dt>조례 상한</dt><dd id="detail-ordinance">토지이용계획 확인 후 조회</dd></div><div><dt>계약 구분</dt><dd id="detail-contract-type">—</dd></div><div><dt>계약갱신요구권</dt><dd id="detail-renewal-right">—</dd></div><div><dt>종전 계약</dt><dd id="detail-previous-rent">—</dd></div><div><dt>원천 데이터</dt><dd id="detail-source">—</dd></div><div><dt>확인 상태</dt><dd id="detail-confidence">—</dd></div><div><dt>조회 시각</dt><dd id="detail-updated">—</dd></div></dl>
                 <section class="detail-history" aria-labelledby="detail-history-title"><h3 id="detail-history-title">같은 주소 최근 거래</h3><div id="detail-history-list" class="detail-history-list"><p class="history-empty">거래를 선택하면 최근 이력이 표시됩니다.</p></div></section>
-                <p class="detail-footnote">이 패널은 거래 원자료를 요약합니다. 용도지역과 개발 가능성은 공식 확인 링크가 연결된 뒤 별도로 판단하세요.</p>
+                <p class="detail-footnote">이 패널은 거래 원자료와 공식 건축물·토지이용·조례 응답을 요약합니다. 개발 가능성은 도로·일조·주차·지구단위계획을 별도로 확인하세요.</p>
             </aside>
 
             <section class="history-section" aria-labelledby="history-title">

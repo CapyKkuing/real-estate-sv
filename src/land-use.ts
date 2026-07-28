@@ -21,9 +21,11 @@ function text(value: unknown): string | undefined {
 function compactDate(value: unknown): string | null | undefined {
   if (value === undefined || value === null || value === "") return null
   const date = text(value)
-  if (!date || !/^\d{8}$/.test(date)) return undefined
-  const parsed = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00Z`)
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10).replaceAll("-", "") !== date) {
+  if (!date) return undefined
+  const compact = /^\d{8}$/.test(date) ? date : date.replaceAll("-", "")
+  if (!/^\d{8}$/.test(compact)) return undefined
+  const parsed = new Date(`${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10).replaceAll("-", "") !== compact) {
     return undefined
   }
   return parsed.toISOString().slice(0, 10)

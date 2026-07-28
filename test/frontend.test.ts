@@ -44,7 +44,7 @@ describe("Cloudflare frontend", () => {
       readFile(resolve("site/main.js"), "utf8"),
     ])
 
-    for (const id of ["theme-toggle", "query-status", "stat-total", "stat-median", "stat-average", "stat-valid", "stat-cancelled", "trend-bars", "trend-summary", "sort-select", "export-csv-btn", "columns-toggle", "columns-menu", "detail-panel", "detail-source", "detail-history-list"]) {
+    for (const id of ["theme-toggle", "query-status", "period-select", "stat-total", "stat-median", "stat-average", "stat-valid", "stat-cancelled", "trend-bars", "trend-summary", "sort-select", "export-csv-btn", "columns-toggle", "columns-menu", "detail-panel", "detail-pnu", "detail-building", "detail-land-use", "detail-ordinance", "detail-source", "detail-history-list"]) {
       expect(html).toContain(`id="${id}"`)
     }
     expect(html).toContain('data-theme="light"')
@@ -58,8 +58,16 @@ describe("Cloudflare frontend", () => {
     expect(script).toContain("realEstateTheme")
     expect(script).toContain("setQueryStatus")
     expect(script).toContain("prepareDongOptions")
+    expect(script).toContain("loadHistoryTrend")
+    expect(script).toContain("fetchSingleRentType")
+    expect(script).toContain("loadDetailPnu")
+    expect(script).toContain("loadDetailBuilding")
+    expect(script).toContain("loadDetailLandUse")
+    expect(script).toContain("loadDetailOrdinance")
     expect(script).toContain("isAnalysisReady")
     expect(html).toContain('<input type="checkbox" name="type" value="apt" checked>')
+    expect(html).toContain('<input type="checkbox" name="transaction-mode" value="trade" checked>')
+    expect(html).toContain('id="detail-renewal-right"')
     expect(html).toContain('<select id="gugun-select" disabled>')
     expect(html).toContain('<select id="date-select" disabled>')
     expect(html).toContain('<select id="dong-select" disabled>')
