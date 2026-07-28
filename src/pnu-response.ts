@@ -99,7 +99,7 @@ export async function handlePnuRequest(
   }).toString()
   try {
     const response = await dependencies.fetchUpstream(upstreamUrl.toString(), {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", "User-Agent": "real-estate-sv/1.0" },
     })
     if (!response.ok) return jsonError("법정동 코드 조회에 실패했습니다.", 502)
     const result = resolvePnuFromLegalDongPayload(await response.json(), address, jibun)

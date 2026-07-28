@@ -237,7 +237,9 @@ export async function handleOrdinanceRequest(
 
   const retrievedAt = new Date().toISOString()
   try {
-    const searchResponse = await dependencies.fetchUpstream(searchUrl(dependencies.lawApiOc, jurisdictionName))
+    const searchResponse = await dependencies.fetchUpstream(searchUrl(dependencies.lawApiOc, jurisdictionName), {
+      headers: { Accept: "application/json", "User-Agent": "real-estate-sv/1.0" },
+    })
     if (!searchResponse.ok) return errorResponse("국가법령정보 검색 API 요청에 실패했습니다.", searchResponse.status)
     const foundCandidates = candidates(await searchResponse.json(), jurisdictionName).slice(0, 5)
     if (foundCandidates.length === 0) {
@@ -249,7 +251,9 @@ export async function handleOrdinanceRequest(
     }
 
     for (const candidate of foundCandidates) {
-      const response = await dependencies.fetchUpstream(bodyUrl(dependencies.lawApiOc, candidate))
+      const response = await dependencies.fetchUpstream(bodyUrl(dependencies.lawApiOc, candidate), {
+        headers: { Accept: "application/json", "User-Agent": "real-estate-sv/1.0" },
+      })
       if (!response.ok) continue
       const payload = await response.json()
       const regulation = findRegulation(payload, candidate, jurisdictionCode, zoneCode, zoneName, retrievedAt)

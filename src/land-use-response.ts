@@ -110,7 +110,9 @@ export async function handleLandUseRequest(
   }).toString()
 
   try {
-    const upstream = await dependencies.fetchUpstream(upstreamUrl)
+    const upstream = await dependencies.fetchUpstream(upstreamUrl, {
+      headers: { Accept: "application/json", "User-Agent": "real-estate-sv/1.0" },
+    })
     if (!upstream.ok) return errorResponse("토지이용계획 API 요청에 실패했습니다.", upstream.status)
     const resolved = resolveLandUseResponse(await upstream.json(), pnu)
     if (dependencies.database) {
