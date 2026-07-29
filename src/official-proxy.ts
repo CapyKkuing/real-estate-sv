@@ -1,4 +1,4 @@
-const OFFICIAL_HOSTS = new Set(["apis.data.go.kr", "api.vworld.kr", "www.law.go.kr"])
+const PROXY_HOSTS = new Set(["api.vworld.kr", "www.law.go.kr"])
 
 type OfficialProxyOptions = {
   readonly proxyUrl?: string
@@ -7,7 +7,7 @@ type OfficialProxyOptions = {
 }
 
 function isOfficialUrl(url: URL): boolean {
-  return url.protocol === "https:" && OFFICIAL_HOSTS.has(url.hostname)
+  return url.protocol === "https:" && PROXY_HOSTS.has(url.hostname)
 }
 
 function proxyError(message: string, status: number): Response {

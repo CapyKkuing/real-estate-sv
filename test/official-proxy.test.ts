@@ -54,6 +54,21 @@ describe("official API proxy fetch", () => {
     expect(directInit).toBeUndefined()
   })
 
+  it("calls the public data portal directly without proxy configuration", async () => {
+    let directRequest: Request | undefined
+    const fetchUpstream: typeof fetch = async (input, init) => {
+      directRequest = new Request(input, init)
+      return new Response("direct")
+    }
+    const proxyFetch = createOfficialProxyFetch({ fetchUpstream })
+
+    const response = await proxyFetch("https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=provider-key")
+
+    expect(await response.text()).toBe("direct")
+    expect(directRequest).toBeInstanceOf(Request)
+    expect(directRequest?.url).toContain("https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev")
+  })
+
   it("does not make an official request when proxy configuration is missing", async () => {
     const fetchUpstream: typeof fetch = async () => {
       throw new Error("unexpected upstream request")
@@ -66,7 +81,7 @@ describe("official API proxy fetch", () => {
     await expect(response.json()).resolves.toEqual({ error: "공식 데이터 중계 서버가 설정되지 않았습니다." })
   })
 
-  it("does not proxy non-GET official requests", async () => {
+  it("does not proxy non-GET requests to a fixed-IP provider", async () => {
     const fetchUpstream: typeof fetch = async () => {
       throw new Error("unexpected upstream request")
     }
@@ -76,7 +91,7 @@ describe("official API proxy fetch", () => {
       fetchUpstream,
     })
 
-    const response = await proxyFetch("https://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList", {
+    const response = await proxyFetch("https://api.vworld.kr/ned/data/getLandUseAttr", {
       method: "POST",
     })
 
