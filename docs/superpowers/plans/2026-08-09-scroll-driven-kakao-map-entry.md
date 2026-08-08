@@ -238,39 +238,76 @@ git commit -m "feat: add runtime Kakao map configuration"
 - Create: `site/kakao-map.js`
 - Create: `test/kakao-map.test.js`
 - Modify: `site/entry-map.js`
+- Modify: `site/entry-experience.js`
 - Modify: `test/entry-map.test.js`
+- Modify: `test/entry-experience.test.js`
 
 **Interfaces:**
 
-```js
-// 모든 지도 공급자가 반환해야 하는 최소 컨트롤러
-{
-    provider,
-    ready,
-    resize(),
-    getCenter(),
-    setCamera({ center, level, animate }),
-    setInteractive(enabled),
-    resolveRegion({ longitude, latitude }),
-    geocodeAddress(address),
-    setPriceMarkers(markers, onSelect),
-    clearPriceMarkers(),
-    destroy(),
-}
+```ts
+type Coordinates = { longitude: number; latitude: number };
+type MarkerInput = { coordinates: Coordinates; label: string; itemIndices: number[]; summary: string };
+
+// Kakao와 OpenFreeMap concrete controller의 공통 계약
+type ConcreteMapController = {
+    provider: 'kakao' | 'openfreemap',
+    resize(): void,
+    getCenter(): Coordinates | null,
+    setCamera(camera: { center: Coordinates; level: number; animate: boolean }): void,
+    setInteractive(enabled: boolean): void,
+    resolveRegion(center: Coordinates): Promise<{ sidoCode: string; lawdCd: string; dongName: string }>,
+    geocodeAddress(address: string): Promise<Coordinates>,
+    setPriceMarkers(markers: MarkerInput[], onSelect: (index: number) => void): void,
+    clearPriceMarkers(): void,
+    destroy(): void,
+};
+
+// createEntryMap()이 즉시 반환하는 facade 계약
+type EntryMapFacade = {
+    get provider(): 'pending' | 'kakao' | 'openfreemap' | 'none',
+    ready: Promise<ConcreteMapController>,
+    resize(): void,
+    getCenter(): Coordinates | null,
+    setCamera(camera: { center: Coordinates; level: number; animate: boolean }): Promise<void>,
+    setInteractive(enabled: boolean): Promise<void>,
+    resolveRegion(center: Coordinates): Promise<{ sidoCode: string; lawdCd: string; dongName: string }>,
+    geocodeAddress(address: string): Promise<Coordinates>,
+    setPriceMarkers(markers: MarkerInput[], onSelect: (index: number) => void): Promise<void>,
+    clearPriceMarkers(): Promise<void>,
+    destroy(): void,
+};
 ```
 
-`createEntryMap()`은 기존처럼 동기적으로 컨트롤러를 반환한다. 내부 `ready` Promise가 공급자 로딩을 끝내고, 나머지 메서드는 준비된 실제 컨트롤러에 위임한다. 따라서 현재 동기식 `initEntryExperience()` 계약을 깨지 않는다.
+`ready`는 facade에만 있고 concrete controller에는 없다. Concrete controller의 `provider`는 고정값이고, facade의 `provider`는 getter다. Facade는 처음 `pending`을 반환하고 `ready`가 끝난 뒤 실제 `kakao` 또는 `openfreemap`을 반환해야 한다. 따라서 `await facade.ready`와 이후 `facade.provider`로 확정 공급자를 모두 조회할 수 있으며 영구적인 `pending` 값이 남지 않는다.
 
-- [ ] **Step 1: Write failing Kakao controller tests**
+`createEntryMap()`과 `initEntryExperience()`은 기존처럼 동기적으로 컨트롤러를 반환한다. `initEntryExperience({ document, window, loadProvider = loadMapProvider })`가 Task 1의 `loadMapProvider`를 명시적으로 주입하고, facade 내부 `ready`가 비동기 공급자 선택을 끝낸다.
+
+- [ ] **Step 1: Write failing Kakao controller contract tests**
 
 ```js
-it('moves the Kakao camera and resolves the legal region', async () => {
+it('uses exact Kakao camera and interaction controls', () => {
   const kakao = createKakaoFake()
   const controller = createKakaoMapController({ container: {}, kakao })
+  const center = { longitude: 126.978, latitude: 37.5665 }
 
-  controller.setCamera({ center: { longitude: 126.978, latitude: 37.5665 }, level: 5, animate: false })
-  expect(kakao.map.setCenter).toHaveBeenCalled()
+  controller.setCamera({ center, level: 5, animate: true })
+  expect(kakao.map.panTo).toHaveBeenCalledOnce()
+  controller.setCamera({ center, level: 6, animate: false })
+  expect(kakao.map.setCenter).toHaveBeenCalledOnce()
   expect(kakao.map.setLevel).toHaveBeenCalledWith(5)
+  expect(kakao.map.setLevel).toHaveBeenCalledWith(6)
+
+  controller.setInteractive(false)
+  expect(kakao.map.setDraggable).toHaveBeenLastCalledWith(false)
+  expect(kakao.map.setZoomable).toHaveBeenLastCalledWith(false)
+  controller.setInteractive(true)
+  expect(kakao.map.setDraggable).toHaveBeenLastCalledWith(true)
+  expect(kakao.map.setZoomable).toHaveBeenLastCalledWith(true)
+})
+
+it('resolves legal regions and address coordinates', async () => {
+  const kakao = createKakaoFake()
+  const controller = createKakaoMapController({ container: {}, kakao })
 
   kakao.geocoder.coord2RegionCode.mockImplementation((_lng, _lat, callback) => {
     callback([{ region_type: 'B', code: '1111010100', region_1depth_name: '서울특별시', region_2depth_name: '종로구', region_3depth_name: '청운동' }], 'OK')
@@ -278,8 +315,42 @@ it('moves the Kakao camera and resolves the legal region', async () => {
   await expect(controller.resolveRegion({ longitude: 126.978, latitude: 37.5665 })).resolves.toMatchObject({
     sidoCode: '11', lawdCd: '11110', dongName: '청운동'
   })
+
+  kakao.geocoder.addressSearch.mockImplementation((_address, callback) => {
+    callback([{ x: '126.91', y: '37.55' }], 'OK')
+  })
+  await expect(controller.geocodeAddress('서울특별시 마포구 서교동 1-1')).resolves.toEqual({
+    longitude: 126.91,
+    latitude: 37.55,
+  })
+})
+
+it('rejects Kakao service failures and keeps Task 11 marker signatures as no-ops', async () => {
+  const kakao = createKakaoFake()
+  const controller = createKakaoMapController({ container: {}, kakao })
+  kakao.geocoder.coord2RegionCode.mockImplementation((_lng, _lat, callback) => callback([], 'ERROR'))
+  kakao.geocoder.addressSearch.mockImplementation((_address, callback) => callback([], 'ZERO_RESULT'))
+
+  await expect(controller.resolveRegion({ longitude: 126.978, latitude: 37.5665 })).rejects.toThrow('region-unavailable')
+  await expect(controller.geocodeAddress('없는 주소')).rejects.toThrow('geocode-unavailable')
+  expect(() => controller.setPriceMarkers([], vi.fn())).not.toThrow()
+  expect(() => controller.clearPriceMarkers()).not.toThrow()
+  expect(kakao.createdMarkers).toHaveLength(0)
+})
+
+it('cleans up Kakao listeners and container once', () => {
+  const kakao = createKakaoFake()
+  const container = { replaceChildren: vi.fn() }
+  const controller = createKakaoMapController({ container, kakao })
+
+  controller.destroy()
+  controller.destroy()
+  expect(kakao.maps.event.clearInstance).toHaveBeenCalledOnce()
+  expect(container.replaceChildren).toHaveBeenCalledOnce()
 })
 ```
+
+`createKakaoFake()` must expose `maps.Map`, `LatLng`, `services.Geocoder`, `services.Status.OK`, `event.clearInstance`, and spies for `setCenter`, `panTo`, `setLevel`, `setDraggable`, and `setZoomable`. It must record marker construction so Task 2 can prove marker methods remain no-ops.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -289,7 +360,7 @@ Expected: FAIL because `site/kakao-map.js` does not exist.
 
 - [ ] **Step 3: Implement the Kakao controller**
 
-Use `kakao.maps.Map`, `LatLng`, `services.Geocoder`, `coord2RegionCode`, and `addressSearch`. Convert Kakao status failures to rejected promises. `setPriceMarkers` must accept only already-geocoded marker data; address lookup belongs to Task 10.
+Use `kakao.maps.Map`, `LatLng`, `services.Geocoder`, `coord2RegionCode`, and `addressSearch`. Both service methods reject unless status is `kakao.maps.services.Status.OK` and a usable result exists. `geocodeAddress(address)` converts Kakao string coordinates to numbers and returns exactly `{ longitude, latitude }`.
 
 ```js
 export function createKakaoMapController({ container, kakao, onStatus = () => {} }) {
@@ -298,7 +369,64 @@ export function createKakaoMapController({ container, kakao, onStatus = () => {}
         level: 13,
     });
     const geocoder = new kakao.maps.services.Geocoder();
-    let markers = [];
+    let destroyed = false;
+
+    function setCamera({ center, level, animate }) {
+        const target = new kakao.maps.LatLng(center.latitude, center.longitude);
+        map.setLevel(level);
+        if (animate) map.panTo(target);
+        else map.setCenter(target);
+    }
+
+    function setInteractive(enabled) {
+        map.setDraggable(Boolean(enabled));
+        map.setZoomable(Boolean(enabled));
+    }
+
+    function geocodeAddress(address) {
+        return new Promise((resolve, reject) => {
+            geocoder.addressSearch(address, (results, status) => {
+                const result = results?.[0];
+                const longitude = Number(result?.x);
+                const latitude = Number(result?.y);
+                if (status !== kakao.maps.services.Status.OK || !Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+                    reject(new Error('geocode-unavailable'));
+                    return;
+                }
+                resolve({ longitude, latitude });
+            });
+        });
+    }
+
+    function resolveRegion({ longitude, latitude }) {
+        return new Promise((resolve, reject) => {
+            geocoder.coord2RegionCode(longitude, latitude, (results, status) => {
+                const result = results?.find(item => item.region_type === 'B');
+                if (status !== kakao.maps.services.Status.OK || !result?.code || result.code.length < 5) {
+                    reject(new Error('region-unavailable'));
+                    return;
+                }
+                resolve({
+                    sidoCode: result.code.slice(0, 2),
+                    lawdCd: result.code.slice(0, 5),
+                    dongName: result.region_3depth_name,
+                });
+            });
+        });
+    }
+
+    function setPriceMarkers(_markers, _onSelect) {}
+    function clearPriceMarkers() {}
+
+    function destroy() {
+        if (destroyed) return;
+        destroyed = true;
+        clearPriceMarkers();
+        kakao.maps.event.clearInstance(map);
+        container.replaceChildren();
+    }
+
+    onStatus('ready');
 
     return {
         provider: 'kakao',
@@ -315,28 +443,127 @@ export function createKakaoMapController({ container, kakao, onStatus = () => {}
 }
 ```
 
-- [ ] **Step 4: Upgrade the entry-map orchestrator and fallback test**
+`setPriceMarkers(markers, onSelect)` and `clearPriceMarkers()` must keep these exact signatures but do no marker work until Task 11.
+
+- [ ] **Step 4: Write failing facade, lifecycle, and entry integration tests**
+
+Add these cases to `test/entry-map.test.js`:
+
+```js
+it('exposes the resolved provider and replays a pre-ready resize', async () => {
+  const pending = deferred()
+  const resize = vi.fn()
+  const facade = createEntryMap({
+    container: {},
+    maplibre: createMapLibreFake({ resize }),
+    loadProvider: () => pending.promise,
+  })
+
+  expect(facade.provider).toBe('pending')
+  facade.resize()
+  pending.resolve({ provider: 'openfreemap' })
+  await expect(facade.ready).resolves.toMatchObject({ provider: 'openfreemap' })
+  expect(facade.provider).toBe('openfreemap')
+  expect(resize).toHaveBeenCalledOnce()
+})
+
+it('falls back when the injected loader rejects', async () => {
+  const facade = createEntryMap({
+    container: {},
+    maplibre: createMapLibreFake(),
+    loadProvider: vi.fn().mockRejectedValue(new Error('sdk failed')),
+  })
+
+  await expect(facade.ready).resolves.toMatchObject({ provider: 'openfreemap' })
+  expect(facade.provider).toBe('openfreemap')
+})
+
+it('does not leave a late map alive after destroy before readiness', async () => {
+  const pending = deferred()
+  const remove = vi.fn()
+  const facade = createEntryMap({
+    container: {},
+    maplibre: createMapLibreFake({ remove }),
+    loadProvider: () => pending.promise,
+  })
+
+  facade.destroy()
+  pending.resolve({ provider: 'openfreemap' })
+  await facade.ready
+  expect(remove).not.toHaveBeenCalled()
+  expect(facade.getCenter()).toBeNull()
+})
+```
+
+The same file must test the complete `EMPTY_MAP` behavior through a missing OpenFreeMap runtime: `resize`, `setCamera`, `setInteractive`, `setPriceMarkers`, `clearPriceMarkers`, and repeated `destroy` do not throw; `getCenter()` returns `null`; `resolveRegion()` and `geocodeAddress()` reject with the documented unavailable errors.
+
+Add this integration case to `test/entry-experience.test.js`:
+
+```js
+it('injects the Task 1 loader and announces fallback without making init async', async () => {
+  const harness = createControllerHarness()
+  const loadProvider = vi.fn().mockRejectedValue(new Error('sdk failed'))
+
+  const experience = initEntryExperience({ ...harness, loadProvider })
+  expect(experience).toMatchObject({ setMode: expect.any(Function), destroy: expect.any(Function) })
+  await vi.waitFor(() => {
+    expect(loadProvider).toHaveBeenCalledWith({ document: harness.document, window: harness.window })
+    expect(harness.elements['entry-map-status'].textContent).toBe('기본 지도로 표시 중')
+  })
+})
+```
+
+- [ ] **Step 5: Run facade and integration tests and confirm RED**
+
+Run: `npx vitest run test/entry-map.test.js test/entry-experience.test.js`
+
+Expected: FAIL because the current facade has no loader contract or deferred lifecycle, and `initEntryExperience()` does not inject Task 1's loader.
+
+- [ ] **Step 6: Implement the synchronous facade, complete fallback, and loader injection**
 
 `createEntryMap` keeps a synchronous facade and receives an asynchronous loader:
 
 ```js
 export function createEntryMap({ container, maplibre, loadProvider, onStatus = () => {} }) {
     let controller = EMPTY_MAP;
-    const ready = loadProvider().then(provider => {
+    let resolvedProvider = 'pending';
+    let resizePending = false;
+    let destroyed = false;
+
+    function createController(provider) {
+        if (destroyed) {
+            resolvedProvider = 'none';
+            return EMPTY_MAP;
+        }
         if (provider.provider === 'kakao') {
             try {
-                controller = createKakaoMapController({ container, kakao: provider.kakao, onStatus });
-                return controller;
+                return createKakaoMapController({ container, kakao: provider.kakao, onStatus });
             } catch {}
         }
-        controller = createOpenFreeMapController({ container, maplibre, onStatus });
+        onStatus('fallback');
+        return createOpenFreeMapController({ container, maplibre, onStatus });
+    }
+
+    const ready = Promise.resolve()
+      .then(() => loadProvider())
+      .catch(() => ({ provider: 'openfreemap', reason: 'loader-rejected' }))
+      .then(provider => {
+        controller = createController(provider);
+        if (!destroyed) resolvedProvider = controller.provider;
+        if (resizePending && controller !== EMPTY_MAP) {
+            resizePending = false;
+            controller.resize();
+        }
         return controller;
-    });
+      });
 
     return {
-        provider: 'pending',
+        get provider() { return resolvedProvider; },
         ready,
-        resize: () => controller.resize(),
+        resize() {
+            if (controller === EMPTY_MAP) resizePending = true;
+            else controller.resize();
+        },
         getCenter: () => controller.getCenter(),
         setCamera: camera => ready.then(map => map.setCamera(camera)),
         setInteractive: enabled => ready.then(map => map.setInteractive(enabled)),
@@ -344,19 +571,104 @@ export function createEntryMap({ container, maplibre, loadProvider, onStatus = (
         geocodeAddress: address => ready.then(map => map.geocodeAddress(address)),
         setPriceMarkers: (markers, onSelect) => ready.then(map => map.setPriceMarkers(markers, onSelect)),
         clearPriceMarkers: () => ready.then(map => map.clearPriceMarkers()),
-        destroy: () => controller.destroy(),
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            resizePending = false;
+            controller.destroy();
+            controller = EMPTY_MAP;
+        },
     };
 }
 ```
 
-Extend the existing OpenFreeMap controller with the same methods. Unsupported region conversion and geocoding must reject; marker methods are safe no-ops. The fallback must retain map navigation and existing manual query controls.
+`EMPTY_MAP` must implement every concrete-controller method in the interface block without throwing synchronously:
 
-- [ ] **Step 5: Verify and commit**
+```js
+const EMPTY_MAP = Object.freeze({
+    provider: 'none',
+    resize() {},
+    getCenter() { return null; },
+    setCamera(_camera) {},
+    setInteractive(_enabled) {},
+    resolveRegion(_center) { return Promise.reject(new Error('region-unavailable')); },
+    geocodeAddress(_address) { return Promise.reject(new Error('geocode-unavailable')); },
+    setPriceMarkers(_markers, _onSelect) {},
+    clearPriceMarkers() {},
+    destroy() {},
+});
+```
+
+Extract the current MapLibre construction into `createOpenFreeMapController()`, give it fixed `provider: 'openfreemap'`, and keep current controls and attribution. Implement `setCamera({ center, level, animate })` with `[center.longitude, center.latitude]`, `zoom = Math.max(6, Math.min(18, 19 - level))`, and `easeTo` when `animate` is true or `jumpTo` when false. Toggle available MapLibre handlers (`dragPan`, `scrollZoom`, `touchZoomRotate`, `doubleClickZoom`) in `setInteractive(enabled)`. Its region/geocode methods reject with the same unavailable errors; marker methods keep the exact no-op signatures through Task 11; `destroy()` remains idempotent and calls `map.remove()` once. Its load handler reports `fallback`, never `ready`, so the fallback notice is not overwritten after tiles load.
+
+```js
+function setCamera({ center, level, animate }) {
+    const options = {
+        center: [center.longitude, center.latitude],
+        zoom: Math.max(6, Math.min(18, 19 - level)),
+    };
+    if (animate) map.easeTo(options);
+    else map.jumpTo(options);
+}
+
+function setInteractive(enabled) {
+    const method = enabled ? 'enable' : 'disable';
+    [map.dragPan, map.scrollZoom, map.touchZoomRotate, map.doubleClickZoom]
+        .forEach(handler => handler?.[method]?.());
+}
+
+map.on('load', () => onStatus('fallback'));
+```
+
+The facade rules are mandatory:
+
+- Every operation called before `ready` is safe. Promise-returning operations wait for `ready`; `getCenter()` returns `null` before readiness.
+- A pre-ready `resize()` is remembered and replayed once after controller creation so the initial `setMode()` resize is not lost.
+- `destroy()` is idempotent. If called before readiness, late provider resolution must not construct a map; if construction already occurred, the concrete controller is destroyed immediately.
+- A synchronous throw or rejected Promise from `loadProvider` selects OpenFreeMap. Kakao construction failure also selects OpenFreeMap. `ready` must not reject for either case.
+
+Wire Task 1's loader explicitly in `site/entry-experience.js` without making initialization asynchronous. Add this import:
+
+```js
+import { loadMapProvider } from './map-loader.js';
+```
+
+Change the existing function signature to:
+
+```js
+export function initEntryExperience({ document, window, loadProvider = loadMapProvider }) {
+```
+
+Replace only the current `createEntryMap(...)` call with:
+
+```js
+const mapController = createEntryMap({
+    container: elements.map,
+    maplibre: window.maplibregl,
+    loadProvider: () => loadProvider({ document, window }),
+    onStatus: status => {
+        elements.mapStatus.dataset.state = status;
+        elements.mapStatus.textContent = status === 'ready'
+            ? '지도 연결됨'
+            : status === 'fallback'
+                ? '기본 지도로 표시 중'
+                : '지도를 불러오지 못했습니다. 아래 경로 선택은 계속 사용할 수 있습니다.';
+    },
+});
+```
+
+Do not change the existing manual transaction selects in `site/main.js`. The fallback notice changes only map status copy; manual 시도·시군구·읍면동 selection and existing query behavior remain available.
+
+- [ ] **Step 7: Verify and commit**
 
 Run separately:
 
 ```text
-npx vitest run test/kakao-map.test.js test/entry-map.test.js test/map-loader.test.js
+npx vitest run test/kakao-map.test.js test/entry-map.test.js test/entry-experience.test.js test/map-loader.test.js
+npm test
+node --check site/kakao-map.js
+node --check site/entry-map.js
+node --check site/entry-experience.js
 npm run check:frontend
 git diff --check
 ```
@@ -364,17 +676,18 @@ git diff --check
 Expected: all exit `0`.
 
 ```bash
-git add site/kakao-map.js site/entry-map.js test/kakao-map.test.js test/entry-map.test.js
+git add site/kakao-map.js site/entry-map.js site/entry-experience.js test/kakao-map.test.js test/entry-map.test.js test/entry-experience.test.js
 git commit -m "feat: add Kakao map controller with fallback"
 ```
 
 ### Phase 0 Gate — 메인 스레드
 
 - [ ] Verify both Task commit SHAs are descendants of the Phase start SHA.
-- [ ] Run `npx vitest run test/map-config.test.ts test/map-loader.test.js test/kakao-map.test.js test/entry-map.test.js test/worker.test.ts`.
+- [ ] Run `npx vitest run test/map-config.test.ts test/map-loader.test.js test/kakao-map.test.js test/entry-map.test.js test/entry-experience.test.js test/worker.test.ts`.
+- [ ] Run the full regression suite with `npm test`.
 - [ ] Run `npm run typecheck`, `npm run check:frontend`, and `npm run build` separately.
 - [ ] Search tracked source with `git grep -n "KAKAO_MAP_JAVASCRIPT_KEY\|dapi.kakao.com"` and verify there is no actual key literal and no static SDK URL containing a key.
-- [ ] Load the site without a Kakao setting and observe OpenFreeMap plus the `기본 지도로 표시 중` state.
+- [ ] Load the site without a Kakao setting and observe OpenFreeMap plus the `기본 지도로 표시 중` state. Then manually select 시도, 시군구, and 읍면동 in the existing region filters, run the transaction lookup, and verify the result/list flow remains usable without Kakao geocoding.
 - [ ] Report only the Phase 0 summary and wait for Phase 1 approval.
 
 ---
