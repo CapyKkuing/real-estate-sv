@@ -15,6 +15,7 @@ import {
   type OfficialDataMode,
 } from "./demo-official-data"
 import { createOfficialProxyFetch } from "./official-proxy"
+import { handleMapConfigRequest } from "./map-config"
 import type { TransactionMode } from "./rent-endpoints"
 import { transformTransactionResponse } from "./transaction-response"
 import type { PropertyType } from "./transaction-query"
@@ -48,6 +49,7 @@ type WorkerBindings = {
   readonly dataMode?: OfficialDataMode
   readonly fetchAsset: AssetFetcher
   readonly adminToken?: string
+  readonly KAKAO_MAP_JAVASCRIPT_KEY?: string
 }
 
 function jsonError(message: string, status: number, headers?: HeadersInit): Response {
@@ -224,8 +226,12 @@ export async function routeRequest(
   request: Request,
   dependencies: ApiDependencies,
   fetchAsset: AssetFetcher,
+  kakaoMapJavascriptKey?: string,
 ): Promise<Response> {
   const url = new URL(request.url)
+  if (url.pathname === "/api/map-config") {
+    return handleMapConfigRequest(request, kakaoMapJavascriptKey)
+  }
   if (url.pathname === "/api/admin/data-status") {
     const adminDatabase = dependencies.adminDatabase
     const loadStatus = dependencies.adminStatusLoader ?? (adminDatabase
@@ -287,6 +293,7 @@ export function createWorkerHandler(defaultDependencies: RequestDependencies = {
         ...requestDependencies,
       },
       bindings.fetchAsset,
+      bindings.KAKAO_MAP_JAVASCRIPT_KEY,
     )
     if (bindings.dataMode !== "demo" || !new URL(request.url).pathname.startsWith("/api/real-estate")) return response
     return response.then(markDemoDataResponse)
@@ -298,6 +305,7 @@ const workerHandler = createWorkerHandler({ fetchUpstream: fetch })
 type WorkerEnv = Env & {
   readonly ADMIN_API_TOKEN?: string
   readonly DATA_GO_KR_SERVICE_KEY?: string
+  readonly KAKAO_MAP_JAVASCRIPT_KEY?: string
   readonly VWORLD_API_KEY?: string
   readonly OFFICIAL_PROXY_URL?: string
   readonly OFFICIAL_PROXY_TOKEN?: string
@@ -314,6 +322,7 @@ export default {
         vworldKey: env.VWORLD_API_KEY,
         dataMode,
         adminToken: env.ADMIN_API_TOKEN,
+        KAKAO_MAP_JAVASCRIPT_KEY: env.KAKAO_MAP_JAVASCRIPT_KEY,
         fetchAsset: (assetRequest) => env.ASSETS.fetch(assetRequest),
       },
       {
