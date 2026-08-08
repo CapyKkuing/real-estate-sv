@@ -39,9 +39,19 @@ export function createKakaoMapController({ container, kakao, onStatus = () => {}
         return new Promise((resolve, reject) => {
             geocoder.addressSearch(address, (results, status) => {
                 const result = results?.[0];
-                const longitude = Number(result?.x);
-                const latitude = Number(result?.y);
-                if (status !== kakao.maps.services.Status.OK || !Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+                const longitudeText = result?.x;
+                const latitudeText = result?.y;
+                if (status !== kakao.maps.services.Status.OK
+                    || typeof longitudeText !== 'string'
+                    || typeof latitudeText !== 'string'
+                    || !longitudeText.trim()
+                    || !latitudeText.trim()) {
+                    reject(new Error('geocode-unavailable'));
+                    return;
+                }
+                const longitude = Number(longitudeText);
+                const latitude = Number(latitudeText);
+                if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
                     reject(new Error('geocode-unavailable'));
                     return;
                 }

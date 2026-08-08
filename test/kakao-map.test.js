@@ -86,6 +86,19 @@ describe('Kakao map controller', () => {
         });
     });
 
+    it.each([
+        { label: 'null', coordinates: { x: null, y: null } },
+        { label: 'empty', coordinates: { x: '', y: '' } },
+    ])('rejects $label Kakao address coordinates', async ({ coordinates }) => {
+        const kakao = createKakaoFake();
+        const controller = createKakaoMapController({ container: {}, kakao });
+        kakao.geocoder.addressSearch.mockImplementation((_address, callback) => {
+            callback([coordinates], 'OK');
+        });
+
+        await expect(controller.geocodeAddress('사용할 수 없는 주소')).rejects.toThrow('geocode-unavailable');
+    });
+
     it('rejects Kakao service failures and keeps Task 11 marker signatures as no-ops', async () => {
         const kakao = createKakaoFake();
         const controller = createKakaoMapController({ container: {}, kakao });
