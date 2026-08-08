@@ -154,6 +154,10 @@ function createControllerHarness() {
     };
 }
 
+function findQuestionControl(harness, ariaLabel) {
+    return harness.elements['housing-question-body'].children.find(element => element['aria-label'] === ariaLabel);
+}
+
 describe('entry experience question navigation', () => {
     const questions = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
 
@@ -223,7 +227,23 @@ describe('entry experience controller', () => {
 
         initEntryExperience(harness);
 
-        expect(harness.elements['housing-question-body'].children[1].value).toBe('11');
+        expect(findQuestionControl(harness, '광역 지역 선택').value).toBe('11');
+        expect(harness.elements['housing-question-next'].disabled).toBe(false);
+    });
+
+    it('restores a persisted direct preferred-region answer when housing opens', () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        harness.window.location.hash = '#housing';
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: { preferredRegion: 'text:마포구' },
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+
+        initEntryExperience(harness);
+
+        expect(findQuestionControl(harness, '원하는 지역명 직접 입력').value).toBe('마포구');
         expect(harness.elements['housing-question-next'].disabled).toBe(false);
     });
 

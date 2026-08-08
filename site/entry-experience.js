@@ -131,6 +131,9 @@ export function initEntryExperience({ document, window }) {
 
             const directRegion = document.createElement('input');
             directRegion.type = 'search';
+            if (typeof savedAnswer === 'string' && savedAnswer.startsWith('text:')) {
+                directRegion.value = savedAnswer.slice('text:'.length);
+            }
             directRegion.placeholder = '원하는 지역명 직접 입력';
             directRegion.setAttribute('aria-label', '원하는 지역명 직접 입력');
             directRegion.addEventListener('change', () => {
