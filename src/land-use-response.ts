@@ -113,7 +113,10 @@ export async function handleLandUseRequest(
     const upstream = await dependencies.fetchUpstream(upstreamUrl, {
       headers: { Accept: "application/json", "User-Agent": "real-estate-sv/1.0" },
     })
-    if (!upstream.ok) return errorResponse("토지이용계획 API 요청에 실패했습니다.", upstream.status)
+    if (!upstream.ok) {
+      console.warn("VWorld upstream rejected land-use request", { status: upstream.status })
+      return errorResponse("토지이용계획 API 요청에 실패했습니다.", upstream.status)
+    }
     const resolved = resolveLandUseResponse(await upstream.json(), pnu)
     if (dependencies.database) {
       try {
@@ -121,7 +124,11 @@ export async function handleLandUseRequest(
       } catch {}
     }
     return Response.json(resolved, { headers: { "Cache-Control": "s-maxage=86400" } })
-  } catch {
+  } catch (error: unknown) {
+    console.warn("VWorld upstream connection failed", {
+      name: error instanceof Error ? error.name : "unknown",
+      message: error instanceof Error ? error.message : String(error),
+    })
     return errorResponse("토지이용계획 API에 연결하지 못했습니다.", 502)
   }
 }
