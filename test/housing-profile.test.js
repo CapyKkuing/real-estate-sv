@@ -19,17 +19,15 @@ function memoryStorage() {
 }
 
 describe('housing profile', () => {
-    it('starts with the preferred-region question and contains seven safe questions', () => {
-        expect(HOUSING_QUESTIONS).toHaveLength(7);
-        expect(HOUSING_QUESTIONS[0].id).toBe('preferredRegion');
-        expect(HOUSING_QUESTIONS.map(question => question.id)).toEqual([
-            'preferredRegion',
-            'householdType',
-            'homelessStatus',
-            'ageBand',
-            'incomeBand',
-            'assetBand',
-            'currentHousingCost',
+    it('provides the exact seven safe questions in their required order', () => {
+        expect(HOUSING_QUESTIONS).toEqual([
+            { id: 'preferredRegion', title: '어느 지역에서 살고 싶나요?', type: 'region' },
+            { id: 'householdType', title: '함께 사는 가구 형태를 알려주세요.', type: 'choice', options: ['1인', '부부', '자녀 포함', '기타'] },
+            { id: 'homelessStatus', title: '현재 무주택 상태인가요?', type: 'choice', options: ['no-home', 'owns-home', 'unknown'] },
+            { id: 'ageBand', title: '정책 확인을 위한 나이 구간을 선택하세요.', type: 'choice', options: ['under-19', '19-34', '35-64', '65-plus'] },
+            { id: 'incomeBand', title: '가구 월소득 구간을 선택하세요.', type: 'choice', options: ['under-200', '200-350', '350-500', 'over-500', 'unknown'] },
+            { id: 'assetBand', title: '가구 자산 구간을 선택하세요.', type: 'choice', options: ['under-10000', '10000-25000', '25000-35000', 'over-35000', 'unknown'] },
+            { id: 'currentHousingCost', title: '현재 월 주거비 구간을 선택하세요.', type: 'choice', options: ['none', 'under-30', '30-60', '60-100', 'over-100'] },
         ]);
     });
 
