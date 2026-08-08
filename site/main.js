@@ -213,6 +213,14 @@ const detailSource = document.getElementById('detail-source');
 const detailConfidence = document.getElementById('detail-confidence');
 const detailUpdated = document.getElementById('detail-updated');
 const detailHistoryList = document.getElementById('detail-history-list');
+const entryView = document.getElementById('entry-view');
+const platformView = document.getElementById('platform-view');
+const mapShell = document.getElementById('map-shell');
+const mapShellLabel = document.getElementById('map-shell-label');
+const mapShellTitle = document.getElementById('map-shell-title');
+const mapShellDescription = document.getElementById('map-shell-description');
+const entryBack = document.getElementById('entry-back');
+const skipLink = document.querySelector('.skip-link');
 
 // 페이지네이션 및 상태 변수
 let globalData = [];
@@ -638,6 +646,76 @@ async function fetchSingleRentType(type, lawdCd, dealYmd, selectedModes) {
             isDemo ? '개발용 샘플 전월세 거래' : undefined,
         ));
 }
+
+const PLATFORM_COPY = {
+    housing: {
+        label: '내게 맞는 주거 찾기',
+        title: '지도를 보며\n내 조건에 맞는 주거를 찾으세요.',
+        description: '지도는 그대로 두고, 필요한 조건만 짧게 확인합니다.'
+    },
+    map: {
+        label: '실거래 지도',
+        title: '지역을 선택해\n실제 거래를 확인하세요.',
+        description: '질문 없이 지역 시세와 단지별 매매·전월세 거래로 바로 들어갑니다.'
+    }
+};
+
+function setLocationHash(hash) {
+    if (window.location.hash === hash) return;
+    window.history.pushState(null, '', hash);
+}
+
+function resetViewportScroll() {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
+}
+
+function openPlatform(mode, updateHash = true) {
+    const copy = PLATFORM_COPY[mode] || PLATFORM_COPY.map;
+    entryView.hidden = true;
+    platformView.hidden = false;
+    mapShell.dataset.mode = mode;
+    mapShellLabel.innerText = copy.label;
+    mapShellTitle.innerHTML = copy.title.replace('\n', '<br>');
+    mapShellDescription.innerText = copy.description;
+    document.querySelectorAll('[data-platform-mode]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.platformMode === mode);
+    });
+    skipLink.setAttribute('href', '#main-content');
+    if (updateHash) setLocationHash(`#${mode}`);
+    if (updateHash) mapShell.focus({ preventScroll: true });
+    resetViewportScroll();
+}
+
+function openEntry(updateHash = true) {
+    platformView.hidden = true;
+    entryView.hidden = false;
+    skipLink.setAttribute('href', '#entry-main');
+    if (updateHash) setLocationHash('#home');
+    if (updateHash) document.getElementById('entry-title')?.focus({ preventScroll: true });
+    resetViewportScroll();
+}
+
+function syncPlatformRoute() {
+    const mode = window.location.hash.slice(1);
+    if (mode === 'housing' || mode === 'map') openPlatform(mode, false);
+    else openEntry(false);
+}
+
+document.querySelectorAll('[data-entry-route]').forEach(button => {
+    button.addEventListener('click', () => openPlatform(button.dataset.entryRoute));
+});
+document.querySelectorAll('[data-platform-mode]').forEach(button => {
+    button.addEventListener('click', () => openPlatform(button.dataset.platformMode));
+});
+document.querySelectorAll('a[href="#home"]').forEach(link => {
+    link.addEventListener('click', event => {
+        event.preventDefault();
+        openEntry();
+    });
+});
+entryBack?.addEventListener('click', () => openEntry());
+window.addEventListener('popstate', syncPlatformRoute);
 
 async function getMultiTypeData() {
     lastQueryHadError = false;
@@ -1428,5 +1506,6 @@ initTheme();
 renderMetrics([]);
 renderTrend([]);
 renderHistory();
+syncPlatformRoute();
 
 console.log("🚀 부동산 분석 PRO v15 - Cloudflare 통합 모드");
