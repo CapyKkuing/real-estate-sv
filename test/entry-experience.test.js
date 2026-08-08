@@ -19,6 +19,8 @@ class FakeElement {
         this.value = '';
         this.options = [];
         this.listeners = {};
+        this.parentElement = null;
+        this.focus = vi.fn();
     }
 
     addEventListener(type, listener) {
@@ -31,6 +33,9 @@ class FakeElement {
 
     append(...children) {
         this.children.push(...children);
+        children.forEach(child => {
+            if (child instanceof FakeElement) child.parentElement = this;
+        });
         if (this.tagName === 'select') this.options.push(...children);
     }
 
@@ -46,7 +51,13 @@ class FakeElement {
         this[name] = value;
     }
 
-    focus() {}
+    closest(selector) {
+        if (selector !== '[hidden]') return null;
+        for (let element = this; element; element = element.parentElement) {
+            if (element.hidden) return element;
+        }
+        return null;
+    }
 }
 
 function createControllerHarness() {
@@ -64,6 +75,8 @@ function createControllerHarness() {
         'housing-question-previous',
         'housing-question-next',
         'entry-back',
+        'entry-title',
+        'main-content',
         'sido-select',
     ];
     const elements = Object.fromEntries(ids.map(id => [id, new FakeElement()]));
@@ -73,13 +86,20 @@ function createControllerHarness() {
     ];
     const housingTrigger = new FakeElement('button');
     const mapTrigger = new FakeElement('button');
+    const platformHousingTrigger = new FakeElement('button');
+    const skipLink = new FakeElement('a');
+    housingTrigger.parentElement = elements['entry-home-overlay'];
+    mapTrigger.parentElement = elements['entry-home-overlay'];
+    platformHousingTrigger.parentElement = elements['platform-view'];
     const document = {
         body: new FakeElement('body'),
         createElement: tagName => new FakeElement(tagName),
         getElementById: id => elements[id],
+        querySelector: selector => selector === '.skip-link' ? skipLink : null,
         querySelectorAll(selector) {
             if (selector === '[data-entry-route="housing"]') return [housingTrigger];
             if (selector === '[data-entry-route="map"]') return [mapTrigger];
+            if (selector === '[data-platform-mode="housing"]') return [platformHousingTrigger];
             return [];
         },
     };
@@ -87,6 +107,7 @@ function createControllerHarness() {
     const location = { hash: '#home' };
     const mapConstruct = vi.fn();
     const resize = vi.fn();
+    const windowListeners = {};
     const window = {
         location,
         history: {
@@ -112,10 +133,25 @@ function createControllerHarness() {
             NavigationControl: function NavigationControl() {},
             GeolocateControl: function GeolocateControl() {},
         },
-        addEventListener() {},
+        addEventListener(type, listener) {
+            (windowListeners[type] ||= []).push(listener);
+        },
+        dispatch(type) {
+            windowListeners[type]?.forEach(listener => listener());
+        },
     };
 
-    return { document, elements, housingTrigger, mapConstruct, resize, stored, window };
+    return {
+        document,
+        elements,
+        housingTrigger,
+        mapConstruct,
+        platformHousingTrigger,
+        resize,
+        skipLink,
+        stored,
+        window,
+    };
 }
 
 describe('entry experience question navigation', () => {
@@ -173,5 +209,70 @@ describe('entry experience controller', () => {
         expect(profile.answers.preferredRegion).toBe('text:마포구');
         expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
         expect(harness.elements['entry-home-overlay'].hidden).toBe(false);
+    });
+
+    it('moves the skip link and focus to the visible map and home targets', () => {
+        const harness = createControllerHarness();
+        const controller = initEntryExperience(harness);
+        harness.elements['entry-title'].focus.mockClear();
+
+        controller.setMode('map');
+        expect(harness.skipLink.href).toBe('#main-content');
+        expect(harness.elements['main-content']['tabindex']).toBe('-1');
+        expect(harness.elements['main-content'].focus).toHaveBeenCalledWith({ preventScroll: true });
+
+        controller.setMode('home');
+        expect(harness.skipLink.href).toBe('#entry-main');
+        expect(harness.elements['entry-title']['tabindex']).toBe('-1');
+        expect(harness.elements['entry-title'].focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
+    it('restores a visible housing trigger after Escape closes the dialog', () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        let overlayHiddenWhenFocused = null;
+        harness.housingTrigger.focus.mockImplementation(() => {
+            overlayHiddenWhenFocused = harness.elements['entry-home-overlay'].hidden;
+        });
+        initEntryExperience(harness);
+
+        harness.housingTrigger.dispatch('click');
+        expect(harness.skipLink.href).toBe('#entry-main');
+        expect(harness.elements['housing-question-close'].focus).toHaveBeenCalledWith({ preventScroll: true });
+        harness.elements['housing-question-dialog'].dispatch('keydown', { key: 'Escape' });
+
+        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
+        expect(harness.housingTrigger.focus).toHaveBeenCalledWith({ preventScroll: true });
+        expect(overlayHiddenWhenFocused).toBe(false);
+    });
+
+    it('does not restore a trigger hidden by closing the housing dialog', () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        const controller = initEntryExperience(harness);
+        controller.setMode('map');
+
+        harness.platformHousingTrigger.dispatch('click');
+        harness.elements['entry-title'].focus.mockClear();
+        harness.elements['housing-question-dialog'].dispatch('keydown', { key: 'Escape' });
+
+        expect(harness.platformHousingTrigger.focus).not.toHaveBeenCalled();
+        expect(harness.elements['entry-title'].focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
+    it('focuses the visible target after popstate navigation', () => {
+        const harness = createControllerHarness();
+        initEntryExperience(harness);
+        harness.elements['entry-title'].focus.mockClear();
+
+        harness.window.location.hash = '#map';
+        harness.window.dispatch('popstate');
+        expect(harness.skipLink.href).toBe('#main-content');
+        expect(harness.elements['main-content'].focus).toHaveBeenCalledWith({ preventScroll: true });
+
+        harness.window.location.hash = '#home';
+        harness.window.dispatch('popstate');
+        expect(harness.skipLink.href).toBe('#entry-main');
+        expect(harness.elements['entry-title'].focus).toHaveBeenCalledWith({ preventScroll: true });
     });
 });

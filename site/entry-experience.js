@@ -49,8 +49,11 @@ export function previousQuestionIndex(index) {
 
 export function initEntryExperience({ document, window }) {
     const elements = {
+        skipLink: document.querySelector('.skip-link'),
         entryView: document.getElementById('entry-view'),
+        entryTitle: document.getElementById('entry-title'),
         platformView: document.getElementById('platform-view'),
+        mainContent: document.getElementById('main-content'),
         map: document.getElementById('entry-map'),
         mapStatus: document.getElementById('entry-map-status'),
         homeOverlay: document.getElementById('entry-home-overlay'),
@@ -75,6 +78,20 @@ export function initEntryExperience({ document, window }) {
     let questionIndex = 0;
     let profile = loadHousingProfile(window.localStorage);
     let lastTrigger = null;
+
+    function focusMode(mode) {
+        if (mode === ENTRY_MODE.HOUSING) {
+            elements.closeQuestion.focus({ preventScroll: true });
+            return;
+        }
+        const target = mode === ENTRY_MODE.MAP ? elements.mainContent : elements.entryTitle;
+        target.setAttribute('tabindex', '-1');
+        target.focus({ preventScroll: true });
+    }
+
+    function isVisible(element) {
+        return Boolean(element && !element.hidden && !element.closest?.('[hidden]'));
+    }
 
     function recordAnswer(questionId, value) {
         profile = answerHousingQuestion(profile, questionId, value);
@@ -151,21 +168,24 @@ export function initEntryExperience({ document, window }) {
         elements.questionDialog.hidden = mode !== ENTRY_MODE.HOUSING;
         elements.platformView.hidden = mode !== ENTRY_MODE.MAP;
         document.body.dataset.entryMode = mode;
+        elements.skipLink.setAttribute('href', mode === ENTRY_MODE.MAP ? '#main-content' : '#entry-main');
         if (updateHash) writeEntryMode(window.history, window.location, mode);
         if (mode === ENTRY_MODE.HOUSING) renderQuestion();
         mapController.resize();
+        focusMode(mode);
     }
 
     function openHousing(trigger) {
         lastTrigger = trigger;
         setMode(ENTRY_MODE.HOUSING);
-        elements.closeQuestion.focus({ preventScroll: true });
     }
 
     function closeHousing() {
+        const trigger = lastTrigger;
+        lastTrigger = null;
         saveHousingProfile(window.localStorage, profile);
         setMode(ENTRY_MODE.HOME);
-        lastTrigger?.focus({ preventScroll: true });
+        if (isVisible(trigger)) trigger.focus({ preventScroll: true });
     }
 
     document.querySelectorAll('[data-entry-route="housing"]').forEach(button => {
