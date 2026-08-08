@@ -79,23 +79,35 @@ describe("Cloudflare frontend", () => {
     expect(html).not.toContain('최근 업데이트 <b id="update-time">')
   })
 
-  it("provides equal housing and transaction entry routes over a shared map shell", async () => {
-    const [html, script, style] = await Promise.all([
+  it("provides an accessible map-first entry and housing question surface", async () => {
+    const [html, entryStyle, script] = await Promise.all([
       readFile(resolve("site/index.html"), "utf8"),
-      readFile(resolve("site/main.js"), "utf8"),
-      readFile(resolve("site/style.css"), "utf8"),
+      readFile(resolve("site/entry.css"), "utf8"),
+      readFile(resolve("site/entry-experience.js"), "utf8"),
     ])
 
-    expect(html).toContain('id="entry-view"')
-    expect(html).toContain('id="map-shell"')
-    expect(html).toContain('data-entry-route="housing"')
-    expect(html).toContain('data-entry-route="map"')
-    expect(html).toContain("내게 맞는 주거 찾기")
-    expect(html).toContain("지도에서 실거래 찾기")
-    expect(script).toContain("function openPlatform")
-    expect(script).toContain("PLATFORM_COPY")
-    expect(style).toContain(".entry-routes")
-    expect(style).toMatch(/@media \(max-width: 720px\)[\s\S]*\.entry-routes/)
+    for (const id of [
+      "entry-view",
+      "entry-map",
+      "entry-map-status",
+      "entry-home-overlay",
+      "housing-question-dialog",
+      "housing-question-progress",
+      "housing-question-title",
+      "housing-question-body",
+      "housing-question-close",
+      "housing-question-previous",
+      "housing-question-next",
+    ]) expect(html).toContain(`id="${id}"`)
+
+    expect(html.match(/data-entry-route="housing"/g)).toHaveLength(2)
+    expect(html.match(/data-entry-route="map"/g)).toHaveLength(2)
+    expect(html).toContain("조건과 시세를 함께 보고, 살 곳을 정하세요.")
+    expect(html).toContain('aria-modal="false"')
+    expect(html).toContain('aria-live="polite"')
+    expect(entryStyle).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))")
+    expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*grid-template-columns: 1fr/)
+    expect(script).toContain("preventScroll: true")
   })
 
   it("provides an accessible three-target comparison surface", async () => {

@@ -17,50 +17,64 @@
     <meta name="twitter:image" content="/real-estate-pro-og.png">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://tiles.openfreemap.org">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="entry.css">
+    <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">본문으로 바로가기</a>
     <section id="entry-view" class="entry-view" aria-labelledby="entry-title">
         <header class="entry-header">
             <a class="entry-brand" href="#home" aria-label="집길 홈">집길</a>
-            <nav class="entry-nav" aria-label="서비스 안내">
+            <nav class="entry-nav" aria-label="주요 메뉴">
                 <button type="button" data-entry-route="housing">주거 찾기</button>
                 <button type="button" data-entry-route="map">실거래 지도</button>
-                <span>공식 데이터</span>
+                <a href="#entry-guide">이용 안내</a>
             </nav>
-            <span class="entry-status"><i aria-hidden="true"></i> 공식 데이터 연결됨</span>
+            <span class="entry-status"><i aria-hidden="true"></i> 데이터는 조회 시 상태 확인</span>
         </header>
-
         <main id="entry-main" class="entry-main">
-            <div class="entry-map-art" aria-hidden="true">
-                <svg viewBox="0 0 1200 680" role="presentation">
-                    <path class="entry-road" d="M-40 552C160 380 232 196 498 154S892 282 1250 74M-40 98C252 202 334 574 624 560S1002 342 1248 626"/>
-                    <path class="entry-region" d="M312 94l108 72 126-18 92 92-38 128 102 100-68 126-152-24-102 66-126-96 30-148-78-88z"/>
-                    <circle cx="410" cy="244" r="9"/><circle cx="648" cy="344" r="8"/><circle cx="860" cy="440" r="10"/>
-                </svg>
-            </div>
-            <div class="entry-copy">
-                <h1 id="entry-title" tabindex="-1">조건과 시세를 함께 보고,<br>살 곳을 정하세요.</h1>
-                <p>신청 가능한 주거지원과 실제 거래 가격을 하나의 지도 위에서 이어봅니다.</p>
-            </div>
-            <div class="entry-routes">
-                <article class="entry-route">
-                    <span>01 · 맞춤 안내</span>
-                    <h2>내게 맞는 주거 찾기</h2>
-                    <p>임대주택과 주거비 지원을 찾고 예상 월 부담까지 비교합니다.</p>
-                    <button type="button" data-entry-route="housing">내 조건으로 찾아보기</button>
-                </article>
-                <article class="entry-route">
-                    <span>02 · 바로 탐색</span>
-                    <h2>지도에서 실거래 찾기</h2>
-                    <p>지역 시세부터 단지별 매매·전월세 거래까지 바로 확인합니다.</p>
-                    <button type="button" data-entry-route="map">실거래 지도 열기</button>
-                </article>
-            </div>
+            <div id="entry-map" class="entry-map" aria-label="지역을 탐색하는 지도"></div>
+            <p id="entry-map-status" class="entry-map-status" data-state="loading" aria-live="polite">지도 연결 중</p>
+            <section id="entry-home-overlay" class="entry-home-overlay">
+                <div class="entry-copy">
+                    <h1 id="entry-title" tabindex="-1">조건과 시세를 함께 보고, 살 곳을 정하세요.</h1>
+                    <p>임대주택과 실제 매매·전월세 가격을 같은 지도에서 이어서 확인합니다.</p>
+                </div>
+                <div class="entry-routes">
+                    <article class="entry-route entry-route-housing">
+                        <span>01 · 맞춤 안내</span>
+                        <h2>내게 맞는 주거 찾기</h2>
+                        <p>임대주택, 주거비 지원, 예상 월 부담을 내 조건에 맞춰 확인합니다.</p>
+                        <button type="button" data-entry-route="housing">내 조건으로 찾아보기 <span aria-hidden="true">→</span></button>
+                    </article>
+                    <article class="entry-route entry-route-map">
+                        <span>02 · 바로 탐색</span>
+                        <h2>지도에서 실거래 찾기</h2>
+                        <p>지역 시세와 단지별 매매·전세·월세 거래를 질문 없이 확인합니다.</p>
+                        <button type="button" data-entry-route="map">실거래 지도 열기 <span aria-hidden="true">→</span></button>
+                    </article>
+                </div>
+            </section>
+            <aside id="housing-question-dialog" class="housing-question" role="dialog" aria-modal="false" aria-labelledby="housing-question-title" hidden>
+                <button id="housing-question-close" class="housing-question-close" type="button" aria-label="질문 닫기">×</button>
+                <p id="housing-question-progress" class="housing-question-progress" aria-live="polite">1 / 7</p>
+                <h2 id="housing-question-title" tabindex="-1">어느 지역에서 살고 싶나요?</h2>
+                <div id="housing-question-body"></div>
+                <div class="housing-question-actions">
+                    <button id="housing-question-previous" type="button">이전</button>
+                    <button id="housing-question-next" type="button">다음</button>
+                </div>
+            </aside>
+            <p class="entry-map-attribution">© OpenFreeMap · © OpenMapTiles · Data from OpenStreetMap</p>
         </main>
-        <footer class="entry-footer"><span>국토교통부·공공기관 공식 데이터</span><span>조회 결과마다 출처와 확인 시각을 표시합니다</span></footer>
+        <footer id="entry-guide" class="entry-footer">
+            <span>실거래는 국토교통부 등 공식 출처를 사용합니다.</span>
+            <span>각 조회 결과에서 출처와 마지막 확인 시각을 표시합니다.</span>
+        </footer>
     </section>
 
     <div id="platform-view" class="app-shell" hidden>
@@ -85,27 +99,6 @@
         </header>
 
         <main id="main-content">
-            <section id="map-shell" class="map-shell" data-mode="map" aria-labelledby="map-shell-title" tabindex="-1">
-                <div class="map-shell-canvas" aria-hidden="true">
-                    <svg viewBox="0 0 1200 540" role="presentation">
-                        <path class="map-shell-road" d="M-60 424C170 242 314 288 504 116S900 188 1260 32M-80 90C234 194 292 556 642 496S942 310 1260 510"/>
-                        <path class="map-shell-region" d="M350 74l112 74 126-22 96 100-40 126 104 102-72 124-148-22-106 62-120-92 26-146-74-88z"/>
-                        <circle cx="454" cy="232" r="8"/><circle cx="682" cy="330" r="7"/><circle cx="878" cy="412" r="9"/>
-                    </svg>
-                </div>
-                <div class="map-shell-copy">
-                    <p id="map-shell-label" class="eyebrow">실거래 지도</p>
-                    <h1 id="map-shell-title">지역을 선택해<br>실제 거래를 확인하세요.</h1>
-                    <p id="map-shell-description">질문 없이 지역 시세와 단지별 매매·전월세 거래로 바로 들어갑니다.</p>
-                </div>
-                <div class="map-shell-legend" aria-label="지도 데이터 안내">
-                    <span><i class="housing-dot"></i> 주거지원</span>
-                    <span><i class="trade-dot"></i> 실거래</span>
-                    <strong>지역 선택 전</strong>
-                </div>
-                <p class="map-shell-source">국토교통부·공공기관 공식 데이터 · 지역 선택 후 최신 확인 시각 표시</p>
-            </section>
-
             <section class="hero-panel legacy-hero" aria-labelledby="hero-title" hidden>
                 <div class="hero-copy">
                     <p class="eyebrow">MARKET INTELLIGENCE / 2026</p>
