@@ -1,4 +1,4 @@
-const PROXY_HOSTS = new Set(["api.vworld.kr", "www.law.go.kr"])
+const PROXY_HOSTS = new Set(["www.law.go.kr"])
 
 type OfficialProxyOptions = {
   readonly proxyUrl?: string

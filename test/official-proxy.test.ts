@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { createOfficialProxyFetch } from "../src/official-proxy"
 
 describe("official API proxy fetch", () => {
-  it("sends an allowed official GET through the authenticated proxy", async () => {
+  it("sends the law API through the authenticated proxy", async () => {
     let proxiedRequest: Request | undefined
     const fetchUpstream: typeof fetch = async (input, init) => {
       proxiedRequest = new Request(input, init)
@@ -15,7 +15,7 @@ describe("official API proxy fetch", () => {
     })
 
     const response = await proxyFetch(
-      "https://api.vworld.kr/ned/data/getLandUseAttr?key=provider-key&pnu=1126010200100830008",
+      "https://www.law.go.kr/DRF/lawSearch.do?OC=provider-key",
       { headers: { Accept: "application/json", "User-Agent": "real-estate-sv/1.0" } },
     )
 
@@ -28,9 +28,26 @@ describe("official API proxy fetch", () => {
     })
     expect(proxiedRequest.headers.get("Authorization")).toBe("Bearer proxy-token")
     await expect(proxiedRequest.json()).resolves.toEqual({
-      url: "https://api.vworld.kr/ned/data/getLandUseAttr?key=provider-key&pnu=1126010200100830008",
+      url: "https://www.law.go.kr/DRF/lawSearch.do?OC=provider-key",
       accept: "application/json",
     })
+  })
+
+  it("calls VWorld directly without proxy configuration", async () => {
+    let directRequest: Request | undefined
+    const fetchUpstream: typeof fetch = async (input, init) => {
+      directRequest = new Request(input, init)
+      return new Response("direct")
+    }
+    const proxyFetch = createOfficialProxyFetch({ fetchUpstream })
+
+    const response = await proxyFetch(
+      "https://api.vworld.kr/ned/data/getLandUseAttr?key=provider-key&domain=example.com&pnu=1126010200100830008",
+      { headers: { Accept: "application/json" } },
+    )
+
+    expect(await response.text()).toBe("direct")
+    expect(directRequest?.url).toBe("https://api.vworld.kr/ned/data/getLandUseAttr?key=provider-key&domain=example.com&pnu=1126010200100830008")
   })
 
   it("does not proxy non-official destinations", async () => {
@@ -81,7 +98,7 @@ describe("official API proxy fetch", () => {
     await expect(response.json()).resolves.toEqual({ error: "공식 데이터 중계 서버가 설정되지 않았습니다." })
   })
 
-  it("does not proxy non-GET requests to a fixed-IP provider", async () => {
+  it("does not proxy non-GET requests to the law provider", async () => {
     const fetchUpstream: typeof fetch = async () => {
       throw new Error("unexpected upstream request")
     }
@@ -91,7 +108,7 @@ describe("official API proxy fetch", () => {
       fetchUpstream,
     })
 
-    const response = await proxyFetch("https://api.vworld.kr/ned/data/getLandUseAttr", {
+    const response = await proxyFetch("https://www.law.go.kr/DRF/lawSearch.do", {
       method: "POST",
     })
 
