@@ -56,7 +56,8 @@
 
 .entry-copy h1:focus,
 .housing-question h2:focus {
-    outline: none;
+    outline: 3px solid #9c3e36;
+    outline-offset: 4px;
 }
 
 .entry-copy p {

@@ -99,6 +99,14 @@ export function initEntryExperience({ document, window }) {
         elements.nextQuestion.disabled = false;
     }
 
+    function clearAnswer(questionId) {
+        const answers = { ...profile.answers };
+        delete answers[questionId];
+        profile = { ...profile, answers, updatedAt: new Date().toISOString() };
+        saveHousingProfile(window.localStorage, profile);
+        elements.nextQuestion.disabled = true;
+    }
+
     function renderQuestion() {
         const step = getQuestionStep(questionIndex, HOUSING_QUESTIONS);
         const savedAnswer = profile.answers[step.question.id];
@@ -126,7 +134,12 @@ export function initEntryExperience({ document, window }) {
                 regionSelect.value = savedAnswer.slice('sido:'.length);
             }
             regionSelect.addEventListener('change', () => {
-                if (regionSelect.value) recordAnswer(step.question.id, `sido:${regionSelect.value}`);
+                directRegion.value = '';
+                if (regionSelect.value) {
+                    recordAnswer(step.question.id, `sido:${regionSelect.value}`);
+                } else {
+                    clearAnswer(step.question.id);
+                }
             });
 
             const directRegion = document.createElement('input');
@@ -138,7 +151,12 @@ export function initEntryExperience({ document, window }) {
             directRegion.setAttribute('aria-label', '원하는 지역명 직접 입력');
             directRegion.addEventListener('change', () => {
                 const value = directRegion.value.trim();
-                if (value) recordAnswer(step.question.id, `text:${value}`);
+                regionSelect.value = '';
+                if (value) {
+                    recordAnswer(step.question.id, `text:${value}`);
+                } else {
+                    clearAnswer(step.question.id);
+                }
             });
             elements.questionBody.append(currentArea, regionSelect, directRegion);
         } else {

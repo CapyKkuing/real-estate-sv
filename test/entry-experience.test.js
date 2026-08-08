@@ -158,6 +158,10 @@ function findQuestionControl(harness, ariaLabel) {
     return harness.elements['housing-question-body'].children.find(element => element['aria-label'] === ariaLabel);
 }
 
+function readStoredProfile(harness) {
+    return JSON.parse(harness.stored.get('jipgilHousingProfile.v1'));
+}
+
 describe('entry experience question navigation', () => {
     const questions = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
 
@@ -245,6 +249,38 @@ describe('entry experience controller', () => {
 
         expect(findQuestionControl(harness, '원하는 지역명 직접 입력').value).toBe('마포구');
         expect(harness.elements['housing-question-next'].disabled).toBe(false);
+    });
+
+    it('keeps preferred-region controls and persistence consistent when switching or clearing', () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        harness.window.location.hash = '#housing';
+        initEntryExperience(harness);
+
+        const regionSelect = findQuestionControl(harness, '광역 지역 선택');
+        const directRegion = findQuestionControl(harness, '원하는 지역명 직접 입력');
+        const next = harness.elements['housing-question-next'];
+
+        regionSelect.value = '11';
+        regionSelect.dispatch('change');
+        expect(readStoredProfile(harness).answers.preferredRegion).toBe('sido:11');
+
+        directRegion.value = '마포구';
+        directRegion.dispatch('change');
+        expect(regionSelect.value).toBe('');
+        expect(readStoredProfile(harness).answers.preferredRegion).toBe('text:마포구');
+
+        directRegion.value = '';
+        directRegion.dispatch('change');
+        expect(readStoredProfile(harness).answers).not.toHaveProperty('preferredRegion');
+        expect(next.disabled).toBe(true);
+
+        regionSelect.value = '11';
+        regionSelect.dispatch('change');
+        regionSelect.value = '';
+        regionSelect.dispatch('change');
+        expect(readStoredProfile(harness).answers).not.toHaveProperty('preferredRegion');
+        expect(next.disabled).toBe(true);
     });
 
     it('moves the skip link and focus to the visible map and home targets', () => {
