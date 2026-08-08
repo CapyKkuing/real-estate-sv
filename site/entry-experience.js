@@ -122,6 +122,9 @@ export function initEntryExperience({ document, window }) {
             [...analysisRegionSelect.options].filter(option => option.value).forEach(option => {
                 regionSelect.append(new Option(option.textContent, option.value));
             });
+            if (typeof savedAnswer === 'string' && savedAnswer.startsWith('sido:')) {
+                regionSelect.value = savedAnswer.slice('sido:'.length);
+            }
             regionSelect.addEventListener('change', () => {
                 if (regionSelect.value) recordAnswer(step.question.id, `sido:${regionSelect.value}`);
             });

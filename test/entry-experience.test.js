@@ -211,6 +211,22 @@ describe('entry experience controller', () => {
         expect(harness.elements['entry-home-overlay'].hidden).toBe(false);
     });
 
+    it('restores a persisted preferred-region selection when housing opens', () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        harness.window.location.hash = '#housing';
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: { preferredRegion: 'sido:11' },
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+
+        initEntryExperience(harness);
+
+        expect(harness.elements['housing-question-body'].children[1].value).toBe('11');
+        expect(harness.elements['housing-question-next'].disabled).toBe(false);
+    });
+
     it('moves the skip link and focus to the visible map and home targets', () => {
         const harness = createControllerHarness();
         const controller = initEntryExperience(harness);
