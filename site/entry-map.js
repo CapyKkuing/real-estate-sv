@@ -12,20 +12,29 @@ export function createEntryMap({ container, maplibre, onStatus = () => {} }) {
         return EMPTY_MAP;
     }
 
-    const map = new maplibre.Map({
-        container,
-        style: ENTRY_MAP_STYLE_URL,
-        center: [126.978, 37.5665],
-        zoom: 10,
-        minZoom: 6,
-        maxZoom: 18,
-        attributionControl: true,
-    });
+    let map;
+    try {
+        map = new maplibre.Map({
+            container,
+            style: ENTRY_MAP_STYLE_URL,
+            center: [126.978, 37.5665],
+            zoom: 10,
+            minZoom: 6,
+            maxZoom: 18,
+            attributionControl: true,
+        });
 
-    map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
-    map.addControl(new maplibre.GeolocateControl({ positionOptions: { enableHighAccuracy: false }, trackUserLocation: false }), 'top-right');
-    map.on('load', () => onStatus('ready'));
-    map.on('error', () => onStatus('error'));
+        map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
+        map.addControl(new maplibre.GeolocateControl({ positionOptions: { enableHighAccuracy: false }, trackUserLocation: false }), 'top-right');
+        map.on('load', () => onStatus('ready'));
+        map.on('error', () => onStatus('error'));
+    } catch {
+        try {
+            map?.remove?.();
+        } catch {}
+        onStatus('error');
+        return EMPTY_MAP;
+    }
 
     return {
         resize: () => map.resize(),

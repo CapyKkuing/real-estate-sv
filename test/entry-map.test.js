@@ -45,4 +45,92 @@ describe('entry map adapter', () => {
         expect(statuses).toEqual(['unavailable']);
         expect(controller.getCenter()).toBeNull();
     });
+
+    it('reports ready when the map loads', () => {
+        const handlers = {};
+        const maplibre = {
+            Map: function Map() {
+                return {
+                    addControl() {},
+                    on(event, handler) { handlers[event] = handler; },
+                    remove() {},
+                    resize() {},
+                    getCenter() { return { lng: 126.978, lat: 37.5665 }; },
+                };
+            },
+            NavigationControl: function NavigationControl() {},
+            GeolocateControl: function GeolocateControl() {},
+        };
+        const statuses = [];
+
+        createEntryMap({ container: {}, maplibre, onStatus: value => statuses.push(value) });
+        handlers.load();
+
+        expect(statuses).toEqual(['ready']);
+    });
+
+    it('reports error when the map emits an asynchronous error', () => {
+        const handlers = {};
+        const maplibre = {
+            Map: function Map() {
+                return {
+                    addControl() {},
+                    on(event, handler) { handlers[event] = handler; },
+                    remove() {},
+                    resize() {},
+                    getCenter() { return { lng: 126.978, lat: 37.5665 }; },
+                };
+            },
+            NavigationControl: function NavigationControl() {},
+            GeolocateControl: function GeolocateControl() {},
+        };
+        const statuses = [];
+
+        createEntryMap({ container: {}, maplibre, onStatus: value => statuses.push(value) });
+        handlers.error();
+
+        expect(statuses).toEqual(['error']);
+    });
+
+    it('reports error and returns an empty controller when construction throws', () => {
+        const statuses = [];
+        const maplibre = {
+            Map: function Map() { throw new Error('MapLibre unavailable'); },
+            NavigationControl: function NavigationControl() {},
+            GeolocateControl: function GeolocateControl() {},
+        };
+
+        const controller = createEntryMap({ container: {}, maplibre, onStatus: value => statuses.push(value) });
+
+        expect(statuses).toEqual(['error']);
+        expect(controller.getCenter()).toBeNull();
+        expect(() => {
+            controller.resize();
+            controller.destroy();
+        }).not.toThrow();
+    });
+
+    it('cleans up and reports error when control registration throws', () => {
+        const remove = vi.fn();
+        const statuses = [];
+        const maplibre = {
+            Map: function Map() {
+                return {
+                    addControl() { throw new Error('Control unavailable'); },
+                    on() {},
+                    remove,
+                    resize() {},
+                    getCenter() { return { lng: 126.978, lat: 37.5665 }; },
+                };
+            },
+            NavigationControl: function NavigationControl() {},
+            GeolocateControl: function GeolocateControl() {},
+        };
+
+        const controller = createEntryMap({ container: {}, maplibre, onStatus: value => statuses.push(value) });
+
+        expect(statuses).toEqual(['error']);
+        expect(remove).toHaveBeenCalledOnce();
+        expect(controller.getCenter()).toBeNull();
+    });
 });
