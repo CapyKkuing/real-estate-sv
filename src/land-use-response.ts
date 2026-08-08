@@ -111,7 +111,12 @@ export async function handleLandUseRequest(
 
   try {
     const upstream = await dependencies.fetchUpstream(upstreamUrl, {
-      headers: { Accept: "application/json", "User-Agent": "real-estate-sv/1.0" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "real-estate-sv/1.0",
+        Origin: url.origin,
+        Referer: `${url.origin}/`,
+      },
     })
     if (!upstream.ok) {
       console.warn("VWorld upstream rejected land-use request", { status: upstream.status })
