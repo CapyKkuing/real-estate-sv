@@ -106,6 +106,9 @@ describe("Cloudflare frontend", () => {
     expect(html).toContain('aria-modal="false"')
     expect(html).toContain('aria-live="polite"')
     expect(entryStyle).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))")
+    const routeButtonStyle = entryStyle.match(/\.entry-route button \{([^}]*)\}/)?.[1] ?? ""
+    expect(routeButtonStyle).toContain("width: 100%")
+    expect(routeButtonStyle).toContain("justify-content: space-between")
     expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*grid-template-columns: 1fr/)
     expect(script).toContain("preventScroll: true")
   })
