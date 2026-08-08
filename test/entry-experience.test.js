@@ -140,11 +140,13 @@ function createControllerHarness() {
             windowListeners[type]?.forEach(listener => listener());
         },
     };
+    const loadProvider = vi.fn().mockResolvedValue({ provider: 'openfreemap' });
 
     return {
         document,
         elements,
         housingTrigger,
+        loadProvider,
         mapConstruct,
         platformHousingTrigger,
         resize,
@@ -178,19 +180,31 @@ describe('entry experience question navigation', () => {
 });
 
 describe('entry experience controller', () => {
-    it('keeps one map instance while switching between entry modes', () => {
+    it('keeps one map instance while switching between entry modes', async () => {
         const harness = createControllerHarness();
         vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
 
         const controller = initEntryExperience(harness);
         controller.setMode('map');
         controller.setMode('housing');
+        await vi.waitFor(() => expect(harness.mapConstruct).toHaveBeenCalledOnce());
 
-        expect(harness.mapConstruct).toHaveBeenCalledOnce();
         expect(harness.elements['platform-view'].hidden).toBe(true);
         expect(harness.elements['housing-question-dialog'].hidden).toBe(false);
         expect(harness.document.body.dataset.entryMode).toBe('housing');
-        expect(harness.resize).toHaveBeenCalledTimes(3);
+        expect(harness.resize).toHaveBeenCalledOnce();
+    });
+
+    it('injects the Task 1 loader and announces fallback without making init async', async () => {
+        const harness = createControllerHarness();
+        const loadProvider = vi.fn().mockRejectedValue(new Error('sdk failed'));
+
+        const experience = initEntryExperience({ ...harness, loadProvider });
+        expect(experience).toMatchObject({ setMode: expect.any(Function), destroy: expect.any(Function) });
+        await vi.waitFor(() => {
+            expect(loadProvider).toHaveBeenCalledWith({ document: harness.document, window: harness.window });
+            expect(harness.elements['entry-map-status'].textContent).toBe('기본 지도로 표시 중');
+        });
     });
 
     it('saves answers through all seven questions and closes on completion', () => {

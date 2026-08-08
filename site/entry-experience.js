@@ -1,5 +1,6 @@
 import { ENTRY_MODE, readEntryMode, writeEntryMode } from './entry-route.js';
 import { createEntryMap } from './entry-map.js';
+import { loadMapProvider } from './map-loader.js';
 import {
     HOUSING_QUESTIONS,
     answerHousingQuestion,
@@ -47,7 +48,7 @@ export function previousQuestionIndex(index) {
     return Math.max(index - 1, 0);
 }
 
-export function initEntryExperience({ document, window }) {
+export function initEntryExperience({ document, window, loadProvider = loadMapProvider }) {
     const elements = {
         skipLink: document.querySelector('.skip-link'),
         entryView: document.getElementById('entry-view'),
@@ -68,11 +69,14 @@ export function initEntryExperience({ document, window }) {
     const mapController = createEntryMap({
         container: elements.map,
         maplibre: window.maplibregl,
+        loadProvider: () => loadProvider({ document, window }),
         onStatus: status => {
             elements.mapStatus.dataset.state = status;
             elements.mapStatus.textContent = status === 'ready'
                 ? '지도 연결됨'
-                : '지도를 불러오지 못했습니다. 아래 경로 선택은 계속 사용할 수 있습니다.';
+                : status === 'fallback'
+                    ? '기본 지도로 표시 중'
+                    : '지도를 불러오지 못했습니다. 아래 경로 선택은 계속 사용할 수 있습니다.';
         },
     });
     let questionIndex = 0;
