@@ -262,10 +262,16 @@ type ConcreteMapController = {
     destroy(): void,
 };
 
+type EmptyMapController = Omit<ConcreteMapController, 'provider'> & {
+    provider: 'none',
+};
+
+type ResolvedMapController = ConcreteMapController | EmptyMapController;
+
 // createEntryMap()이 즉시 반환하는 facade 계약
 type EntryMapFacade = {
     get provider(): 'pending' | 'kakao' | 'openfreemap' | 'none',
-    ready: Promise<ConcreteMapController>,
+    ready: Promise<ResolvedMapController>,
     resize(): void,
     getCenter(): Coordinates | null,
     setCamera(camera: { center: Coordinates; level: number; animate: boolean }): Promise<void>,
@@ -278,7 +284,9 @@ type EntryMapFacade = {
 };
 ```
 
-`ready`는 facade에만 있고 concrete controller에는 없다. Concrete controller의 `provider`는 고정값이고, facade의 `provider`는 getter다. Facade는 처음 `pending`을 반환하고 `ready`가 끝난 뒤 실제 `kakao` 또는 `openfreemap`을 반환해야 한다. 따라서 `await facade.ready`와 이후 `facade.provider`로 확정 공급자를 모두 조회할 수 있으며 영구적인 `pending` 값이 남지 않는다.
+`ready`는 facade에만 있고 concrete controller에는 없다. Concrete controller의 `provider`는 `kakao | openfreemap`, empty controller의 `provider`는 `none`이다. `ready`는 한 번 확정되는 readiness 결과이지 현재 수명주기 상태가 아니다. Facade의 `provider` getter가 현재 상태를 나타내며 처음에는 `pending`, 정상 준비 뒤에는 concrete provider, 모든 `destroy()` 호출 즉시 `none`을 반환한다.
+
+준비 전에 파괴하면 늦게 공급자 결과가 와도 지도를 만들지 않고 `ready`는 `{ provider: 'none', ...EMPTY_MAP }`으로 resolve한다. 준비 뒤 파괴하면 이미 resolve된 `ready`는 같은 concrete controller 결과를 유지하지만, facade의 현재 `provider`는 `none`이 되고 concrete controller의 `destroy()`는 한 번만 실행된다.
 
 `createEntryMap()`과 `initEntryExperience()`은 기존처럼 동기적으로 컨트롤러를 반환한다. `initEntryExperience({ document, window, loadProvider = loadMapProvider })`가 Task 1의 `loadMapProvider`를 명시적으로 주입하고, facade 내부 `ready`가 비동기 공급자 선택을 끝낸다.
 
@@ -480,18 +488,37 @@ it('falls back when the injected loader rejects', async () => {
 
 it('does not leave a late map alive after destroy before readiness', async () => {
   const pending = deferred()
-  const remove = vi.fn()
+  const maplibre = createMapLibreFake()
   const facade = createEntryMap({
     container: {},
-    maplibre: createMapLibreFake({ remove }),
+    maplibre,
     loadProvider: () => pending.promise,
   })
 
   facade.destroy()
+  expect(facade.provider).toBe('none')
   pending.resolve({ provider: 'openfreemap' })
-  await facade.ready
-  expect(remove).not.toHaveBeenCalled()
+  await expect(facade.ready).resolves.toMatchObject({ provider: 'none' })
+  expect(maplibre.Map).not.toHaveBeenCalled()
   expect(facade.getCenter()).toBeNull()
+})
+
+it('keeps the readiness result but clears current provider after destroy', async () => {
+  const remove = vi.fn()
+  const facade = createEntryMap({
+    container: {},
+    maplibre: createMapLibreFake({ remove }),
+    loadProvider: vi.fn().mockResolvedValue({ provider: 'openfreemap' }),
+  })
+
+  const resolved = await facade.ready
+  expect(resolved.provider).toBe('openfreemap')
+  expect(facade.provider).toBe('openfreemap')
+  facade.destroy()
+  facade.destroy()
+  expect(facade.provider).toBe('none')
+  await expect(facade.ready).resolves.toBe(resolved)
+  expect(remove).toHaveBeenCalledOnce()
 })
 ```
 
@@ -526,13 +553,13 @@ Expected: FAIL because the current facade has no loader contract or deferred lif
 ```js
 export function createEntryMap({ container, maplibre, loadProvider, onStatus = () => {} }) {
     let controller = EMPTY_MAP;
-    let resolvedProvider = 'pending';
+    let currentProvider = 'pending';
     let resizePending = false;
     let destroyed = false;
 
     function createController(provider) {
         if (destroyed) {
-            resolvedProvider = 'none';
+            currentProvider = 'none';
             return EMPTY_MAP;
         }
         if (provider.provider === 'kakao') {
@@ -549,7 +576,7 @@ export function createEntryMap({ container, maplibre, loadProvider, onStatus = (
       .catch(() => ({ provider: 'openfreemap', reason: 'loader-rejected' }))
       .then(provider => {
         controller = createController(provider);
-        if (!destroyed) resolvedProvider = controller.provider;
+        if (!destroyed) currentProvider = controller.provider;
         if (resizePending && controller !== EMPTY_MAP) {
             resizePending = false;
             controller.resize();
@@ -558,7 +585,7 @@ export function createEntryMap({ container, maplibre, loadProvider, onStatus = (
       });
 
     return {
-        get provider() { return resolvedProvider; },
+        get provider() { return currentProvider; },
         ready,
         resize() {
             if (controller === EMPTY_MAP) resizePending = true;
@@ -572,6 +599,7 @@ export function createEntryMap({ container, maplibre, loadProvider, onStatus = (
         setPriceMarkers: (markers, onSelect) => ready.then(map => map.setPriceMarkers(markers, onSelect)),
         clearPriceMarkers: () => ready.then(map => map.clearPriceMarkers()),
         destroy() {
+            currentProvider = 'none';
             if (destroyed) return;
             destroyed = true;
             resizePending = false;
@@ -624,7 +652,8 @@ The facade rules are mandatory:
 
 - Every operation called before `ready` is safe. Promise-returning operations wait for `ready`; `getCenter()` returns `null` before readiness.
 - A pre-ready `resize()` is remembered and replayed once after controller creation so the initial `setMode()` resize is not lost.
-- `destroy()` is idempotent. If called before readiness, late provider resolution must not construct a map; if construction already occurred, the concrete controller is destroyed immediately.
+- `ready` records one readiness result and never changes after resolution; the facade `provider` getter records current lifecycle state.
+- Every `destroy()` sets the facade provider to `none` immediately and is idempotent. Before readiness, late provider resolution must not construct a map and `ready` resolves `EMPTY_MAP`. After readiness, `ready` retains the resolved concrete controller while that controller is destroyed exactly once.
 - A synchronous throw or rejected Promise from `loadProvider` selects OpenFreeMap. Kakao construction failure also selects OpenFreeMap. `ready` must not reject for either case.
 
 Wire Task 1's loader explicitly in `site/entry-experience.js` without making initialization asynchronous. Add this import:
