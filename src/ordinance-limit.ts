@@ -11,7 +11,7 @@ export type DevelopmentLimitResult =
         readonly zoneCode: string
         readonly buildingCoverageLimitPercent: number
         readonly floorAreaRatioLimitPercent: number
-        readonly effectiveOn: string
+        readonly effectiveOn: string | null
         readonly retrievedAt: string
       }
     }
@@ -49,7 +49,7 @@ export function normalizeDevelopmentLimit(
   const zoneCode = text(item.zoneCode)
   const buildingCoverageLimitPercent = percent(item.buildingCoverageLimitPercent, 100)
   const floorAreaRatioLimitPercent = percent(item.floorAreaRatioLimitPercent, 5000)
-  const effectiveOn = compactDate(item.effectiveDate)
+  const effectiveOn = compactDate(item.effectiveDate) ?? null
   const retrievedAt = text(item.retrievedAt)
   if (
     !sourceTitle ||
@@ -58,7 +58,6 @@ export function normalizeDevelopmentLimit(
     !zoneCode ||
     buildingCoverageLimitPercent === undefined ||
     floorAreaRatioLimitPercent === undefined ||
-    !effectiveOn ||
     !retrievedAt ||
     Number.isNaN(Date.parse(retrievedAt))
   ) {
@@ -97,6 +96,6 @@ export function mergeDevelopmentLimitHistory(
     history.set(key, result)
   }
   return [...history.values()].sort((left, right) =>
-    left.value.effectiveOn.localeCompare(right.value.effectiveOn),
+    (left.value.effectiveOn ?? "").localeCompare(right.value.effectiveOn ?? ""),
   )
 }

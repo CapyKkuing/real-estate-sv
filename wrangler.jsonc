@@ -10,9 +10,6 @@
     "not_found_handling": "404-page",
     "html_handling": "auto-trailing-slash"
   },
-  "secrets": {
-    "required": ["DATA_GO_KR_SERVICE_KEY", "VWORLD_API_KEY", "LAW_API_OC", "OFFICIAL_PROXY_URL", "OFFICIAL_PROXY_TOKEN"]
-  },
   "d1_databases": [
     {
       "binding": "DB",

@@ -231,19 +231,17 @@ describe("routeRequest", () => {
     expect(fetchAsset).not.toHaveBeenCalled()
   })
 
-  it("routes ordinance requests to the Law Open Data adapter", async () => {
+  it("routes ordinance requests to the public land-use law adapter", async () => {
     const fetchAsset = vi.fn(async () => new Response("asset"))
     const fetchUpstream = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input))
-      if (url.pathname.endsWith("lawSearch.do")) {
-        return Response.json({ LawSearch: { law: [{ 자치법규명: "서울특별시 구로구 도시계획 조례", 자치법규ID: "1001", 시행일자: "20260101" }] } })
-      }
-      return Response.json({ ordinance: { 자치법규명: "서울특별시 구로구 도시계획 조례", 조문: [{ 조내용: "일반상업지역 건폐율 70퍼센트, 용적률 800퍼센트" }] } })
+      expect(url.pathname).toBe("/1613000/LuLawInfoService/DTluLawInfo")
+      return new Response("<response><header><resultCode>00</resultCode></header><body><items><item><UCODE>UQA220</UCODE><UNAME>일반상업지역</UNAME><LAW_CONTENTS>일반상업지역 건폐율 70퍼센트, 용적률 800퍼센트</LAW_CONTENTS></item></items></body></response>")
     })
 
     const response = await routeRequest(
       new Request("https://example.com/api/real-estate/ordinance?jurisdictionCode=11530&jurisdictionName=서울특별시%20구로구&zoneCode=UQA220&zoneName=일반상업지역"),
-      dependencies(fetchUpstream, { lawApiOc: "test-oc" }),
+      dependencies(fetchUpstream),
       fetchAsset,
     )
 

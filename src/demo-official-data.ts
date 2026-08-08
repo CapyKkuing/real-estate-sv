@@ -188,6 +188,10 @@ function ordinanceBodyPayload() {
   }
 }
 
+function landUseLawPayload() {
+  return `<?xml version="1.0" encoding="UTF-8"?><response><header><resultCode>00</resultCode></header><body><items><item><UCODE>UQA220</UCODE><UNAME>일반상업지역</UNAME><LAW_CONTENTS>일반상업지역은 건폐율 70퍼센트 이하, 용적률 800퍼센트 이하로 한다.</LAW_CONTENTS></item></items></body></response>`
+}
+
 export function isDemoOfficialDataMode(value: string | undefined): value is OfficialDataMode {
   return value === "demo"
 }
@@ -231,6 +235,9 @@ export function createDemoOfficialFetch(): typeof fetch {
         return Response.json(legalDongPayload(url.searchParams.get("locatadd_nm") ?? "개발용 주소"))
       }
       if (url.pathname.endsWith("/BldRgstHubService/getBrTitleInfo")) return Response.json(buildingPayload())
+      if (url.pathname.endsWith("/LuLawInfoService/DTluLawInfo")) {
+        return new Response(landUseLawPayload(), { headers: { "Content-Type": "application/xml" } })
+      }
       return Response.json(molitPayload(url, url.pathname.includes("Rent")))
     }
     if (url.hostname === "api.vworld.kr" && url.pathname === "/ned/data/getLandUseAttr") {

@@ -36,7 +36,6 @@ export type ApiDependencies = {
   readonly landUseDatabase?: D1Database
   readonly ordinanceDatabase?: D1Database
   readonly vworldKey?: string
-  readonly lawApiOc?: string
   readonly now?: () => string
   readonly adminToken?: string
   readonly adminStatusLoader?: AdminStatusLoader
@@ -46,7 +45,6 @@ export type ApiDependencies = {
 type WorkerBindings = {
   readonly serviceKey: string
   readonly vworldKey?: string
-  readonly lawApiOc?: string
   readonly dataMode?: OfficialDataMode
   readonly fetchAsset: AssetFetcher
   readonly adminToken?: string
@@ -282,10 +280,9 @@ export function createWorkerHandler(defaultDependencies: RequestDependencies = {
     const response = routeRequest(
       request,
       {
-        serviceKey: bindings.serviceKey,
+        serviceKey: bindings.serviceKey || (bindings.dataMode === "demo" ? "demo-key" : ""),
         dataMode: bindings.dataMode,
         vworldKey: bindings.vworldKey ?? (bindings.dataMode === "demo" ? "demo-key" : undefined),
-        lawApiOc: bindings.lawApiOc ?? (bindings.dataMode === "demo" ? "demo-oc" : undefined),
         adminToken: bindings.adminToken,
         ...requestDependencies,
       },
@@ -300,8 +297,8 @@ const workerHandler = createWorkerHandler({ fetchUpstream: fetch })
 
 type WorkerEnv = Env & {
   readonly ADMIN_API_TOKEN?: string
+  readonly DATA_GO_KR_SERVICE_KEY?: string
   readonly VWORLD_API_KEY?: string
-  readonly LAW_API_OC?: string
   readonly OFFICIAL_PROXY_URL?: string
   readonly OFFICIAL_PROXY_TOKEN?: string
   readonly OFFICIAL_DATA_MODE?: string
@@ -315,7 +312,6 @@ export default {
       {
         serviceKey: env.DATA_GO_KR_SERVICE_KEY ?? "",
         vworldKey: env.VWORLD_API_KEY,
-        lawApiOc: env.LAW_API_OC,
         dataMode,
         adminToken: env.ADMIN_API_TOKEN,
         fetchAsset: (assetRequest) => env.ASSETS.fetch(assetRequest),
