@@ -18,8 +18,14 @@ export async function applyEntryRegion(region, { controls, prepareDongOptions, r
     if (controls.gugun.value !== lawdCd) return;
     if (controls.date) controls.date.disabled = false;
 
-    await prepareDongOptions();
-    controls.dong.value = region.dongName || '';
+    const preparedData = await prepareDongOptions();
+    if (preparedData === null) return;
+
+    const dongName = region.dongName || '';
+    const dongOptions = Array.from(controls.dong.options || []);
+    if (dongName && !dongOptions.some(option => option.value === dongName)) return;
+
+    controls.dong.value = dongName;
     await runAnalysis();
 }
 

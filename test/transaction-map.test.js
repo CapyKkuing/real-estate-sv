@@ -26,7 +26,7 @@ function createTransactionControls() {
     const controls = {
         sido: { value: '', dispatchEvent: vi.fn() },
         gugun: { value: '' },
-        dong: { value: '' },
+        dong: { value: '', options: [{ value: '' }, { value: '서교동' }] },
         date: { disabled: true },
     };
     controls.sido.dispatchEvent.mockImplementation(() => {
@@ -44,6 +44,7 @@ describe('transaction map bridge', () => {
             expect(controls.sido.value).toBe('11');
             expect(controls.gugun.value).toBe('11440');
             expect(controls.date.disabled).toBe(false);
+            return [];
         });
         const runAnalysis = vi.fn(() => {
             expect(controls.dong.value).toBe('서교동');
@@ -55,6 +56,35 @@ describe('transaction map bridge', () => {
         expect(prepareDongOptions).toHaveBeenCalledOnce();
         expect(controls.dong.value).toBe('서교동');
         expect(runAnalysis).toHaveBeenCalledOnce();
+    });
+
+    it('does not run analysis when a superseding request makes dong preparation stale', async () => {
+        const controls = createTransactionControls();
+        const runAnalysis = vi.fn();
+
+        await applyEntryRegion(MAPO_REGION, {
+            controls,
+            prepareDongOptions: vi.fn().mockResolvedValue(null),
+            runAnalysis,
+        });
+
+        expect(controls.dong.value).toBe('');
+        expect(runAnalysis).not.toHaveBeenCalled();
+    });
+
+    it('does not run analysis when the requested dong is not selectable', async () => {
+        const controls = createTransactionControls();
+        controls.dong.options = [{ value: '' }];
+        const runAnalysis = vi.fn();
+
+        await applyEntryRegion(MAPO_REGION, {
+            controls,
+            prepareDongOptions: vi.fn().mockResolvedValue([]),
+            runAnalysis,
+        });
+
+        expect(controls.dong.value).toBe('');
+        expect(runAnalysis).not.toHaveBeenCalled();
     });
 
     it('applies Seoul fallback without choosing a district or querying', async () => {
