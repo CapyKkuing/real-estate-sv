@@ -103,6 +103,8 @@ describe("Cloudflare frontend", () => {
       "housing-summary-bar",
       "housing-summary-chips",
       "housing-summary-transaction",
+      "map-condition-toggle",
+      "map-condition-panel",
     ]) expect(html).toContain(`id="${id}"`)
 
     expect(html.match(/data-entry-route="housing"/g)).toHaveLength(2)
@@ -123,6 +125,10 @@ describe("Cloudflare frontend", () => {
     expect(script).toContain("preventScroll: true")
     expect(script).toContain("getHousingSummaryChips")
     expect(entryStyle).toContain(".housing-summary-bar")
+    expect(html).toContain('aria-controls="map-condition-panel"')
+    expect(html).toContain('aria-expanded="false"')
+    expect(entryStyle).toMatch(/body\[data-entry-mode="map"\][\s\S]*\.map-condition-panel[\s\S]*position:\s*fixed/)
+    expect(script).toContain("mapConditionPanel")
     expect(mainScript).toContain("onRegionChange")
     expect(mainScript).toContain("onOpenTransaction")
     expect(mainScript).toContain("toStoredPreferredRegion")

@@ -94,6 +94,21 @@ describe('housing profile', () => {
         expect(loadHousingProfile(storage).answers.preferredRegion).toBe(preferredRegion);
     });
 
+    it('removes legacy coordinate values before they can be displayed or saved again', () => {
+        const storage = memoryStorage();
+        storage.setItem(HOUSING_PROFILE_STORAGE_KEY, JSON.stringify({
+            version: 1,
+            answers: { preferredRegion: 'map:126.91,37.55' },
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+
+        const profile = loadHousingProfile(storage);
+
+        expect(profile.answers).not.toHaveProperty('preferredRegion');
+        expect(formatPreferredRegion(profile.answers.preferredRegion)).toBe('희망 지역 미선택');
+        expect(storage.getItem(HOUSING_PROFILE_STORAGE_KEY)).not.toContain('map:126.91,37.55');
+    });
+
     it('formats safe object and legacy preferred-region values for display', () => {
         expect(formatHousingAnswer('19-34')).toBe('청년');
         expect(formatPreferredRegion('sido:11')).toBe('서울특별시');

@@ -118,6 +118,8 @@ function createControllerHarness() {
         'entry-skip-dong',
         'entry-title',
         'main-content',
+        'map-condition-toggle',
+        'map-condition-panel',
         'sido-select',
     ];
     const elements = Object.fromEntries(ids.map(id => [id, new FakeElement()]));
@@ -571,11 +573,10 @@ describe('entry experience controller', () => {
         expect(harness.elements['entry-home-overlay'].hidden).toBe(false);
     });
 
-    it('replaces the completed dialog with editable summary chips', async () => {
+    it('keeps the completed profile saved without reopening a home summary panel', async () => {
         const harness = createControllerHarness();
-        const onOpenTransaction = vi.fn();
         vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
-        initEntryExperience({ ...harness, onOpenTransaction });
+        initEntryExperience(harness);
 
         await harness.housingTrigger.click();
         const questionBody = harness.elements['housing-question-body'];
@@ -591,22 +592,8 @@ describe('entry experience controller', () => {
         }
 
         expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
-        expect(harness.elements['housing-summary-bar'].hidden).toBe(false);
-        expect(harness.elements['housing-summary-chips'].children).toHaveLength(5);
-
-        const householdChip = harness.elements['housing-summary-chips'].children[0];
-        expect(householdChip.dataset.housingEdit).toBe('householdType');
-        await householdChip.click();
-        expect(harness.elements['housing-question-progress'].textContent).toBe('1 / 1');
-        expect(harness.elements['housing-question-title'].textContent).toBe('함께 사는 가구 형태를 알려주세요.');
-
-        const householdChoice = questionBody.children[0].children[2].children[0];
-        await householdChoice.dispatch('change');
-        await next.click();
-        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
-        expect(harness.elements['housing-summary-chips'].children[0].textContent).toBe('부부');
-        await harness.elements['housing-summary-transaction'].click();
-        expect(onOpenTransaction).toHaveBeenCalledOnce();
+        expect(harness.elements['housing-summary-bar'].hidden).toBe(true);
+        expect(readStoredProfile(harness).answers.householdType).toBe('1인');
     });
 
     it('restores a coordinate-free stored preferred region for the transaction callback', async () => {
@@ -624,7 +611,7 @@ describe('entry experience controller', () => {
         expect(onOpenTransaction).toHaveBeenCalledWith(STORED_MAPO_REGION);
     });
 
-    it('renders five summary chips immediately for a completed stored profile', () => {
+    it('keeps a completed saved profile off the home map', () => {
         const harness = createControllerHarness();
         harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
             version: 1,
@@ -634,8 +621,24 @@ describe('entry experience controller', () => {
 
         initEntryExperience(harness);
 
-        expect(harness.elements['housing-summary-bar'].hidden).toBe(false);
-        expect(harness.elements['housing-summary-chips'].children).toHaveLength(5);
+        expect(harness.elements['housing-summary-bar'].hidden).toBe(true);
+        expect(readStoredProfile(harness).answers).toEqual(COMPLETE_PROFILE_ANSWERS);
+    });
+
+    it('opens the existing analysis form from a map condition tab without a second path', async () => {
+        const harness = createControllerHarness();
+        const controller = initEntryExperience(harness);
+
+        controller.setMode('map');
+
+        expect(harness.elements['map-condition-toggle'].hidden).toBe(false);
+        expect(harness.elements['map-condition-toggle']['aria-expanded']).toBe('false');
+        expect(harness.elements['map-condition-panel'].hidden).toBe(true);
+
+        await harness.elements['map-condition-toggle'].click();
+
+        expect(harness.elements['map-condition-toggle']['aria-expanded']).toBe('true');
+        expect(harness.elements['map-condition-panel'].hidden).toBe(false);
     });
 
     it('uses selected direct and city-region answers for the transaction callback', async () => {

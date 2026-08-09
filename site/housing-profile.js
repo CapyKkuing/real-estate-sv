@@ -66,6 +66,7 @@ export function formatHousingAnswer(value) {
 export function formatPreferredRegion(region) {
     if (region && typeof region === 'object') return region.label || region.dongName || '희망 지역 미선택';
     if (typeof region !== 'string') return '희망 지역 미선택';
+    if (region.startsWith('map:')) return '희망 지역 미선택';
     if (region.startsWith('text:')) return region.slice('text:'.length) || '희망 지역 미선택';
     if (region.startsWith('sido:')) return SIDO_LABELS[region.slice('sido:'.length)] || region.slice('sido:'.length) || '희망 지역 미선택';
     return region;
@@ -76,10 +77,13 @@ export function createHousingProfile() {
 }
 
 export function answerHousingQuestion(profile, questionId, value, now = new Date().toISOString()) {
-    if (!HOUSING_QUESTIONS.some(question => question.id === questionId)) return profile;
+    const safeProfile = normalizeHousingProfile(profile);
+    if (!HOUSING_QUESTIONS.some(question => question.id === questionId)) return safeProfile;
+    const safeValue = questionId === 'preferredRegion' ? normalizePreferredRegion(value) : value;
+    if (questionId === 'preferredRegion' && safeValue === undefined) return safeProfile;
     return {
         version: PROFILE_VERSION,
-        answers: { ...profile.answers, [questionId]: value },
+        answers: { ...safeProfile.answers, [questionId]: safeValue },
         updatedAt: now,
     };
 }
@@ -94,16 +98,35 @@ export function toStoredPreferredRegion(region) {
     };
 }
 
+function normalizePreferredRegion(region) {
+    if (typeof region === 'string') return region.startsWith('map:') ? undefined : region;
+    if (region && typeof region === 'object') return toStoredPreferredRegion(region);
+    return region;
+}
+
+function normalizeHousingProfile(profile) {
+    const answers = { ...(profile?.answers || {}) };
+    const preferredRegion = normalizePreferredRegion(answers.preferredRegion);
+    if (preferredRegion === undefined) delete answers.preferredRegion;
+    else if (answers.preferredRegion !== preferredRegion) answers.preferredRegion = preferredRegion;
+    const normalized = { ...profile, version: PROFILE_VERSION, answers };
+    return JSON.stringify(normalized) === JSON.stringify(profile) ? profile : normalized;
+}
+
 export function loadHousingProfile(storage) {
     try {
         const parsed = JSON.parse(storage.getItem(HOUSING_PROFILE_STORAGE_KEY) || 'null');
-        if (parsed?.version === PROFILE_VERSION && parsed.answers && typeof parsed.answers === 'object') return parsed;
+        if (parsed?.version === PROFILE_VERSION && parsed.answers && typeof parsed.answers === 'object') {
+            const profile = normalizeHousingProfile(parsed);
+            if (profile !== parsed) storage.setItem(HOUSING_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+            return profile;
+        }
     } catch {}
     return createHousingProfile();
 }
 
 export function saveHousingProfile(storage, profile) {
-    storage.setItem(HOUSING_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    storage.setItem(HOUSING_PROFILE_STORAGE_KEY, JSON.stringify(normalizeHousingProfile(profile)));
 }
 
 export function clearHousingProfile(storage) {

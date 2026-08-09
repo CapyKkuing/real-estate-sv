@@ -62,6 +62,8 @@ export function initEntryExperience({
         summaryBar: document.getElementById('housing-summary-bar'),
         summaryChips: document.getElementById('housing-summary-chips'),
         summaryTransaction: document.getElementById('housing-summary-transaction'),
+        mapConditionToggle: document.getElementById('map-condition-toggle'),
+        mapConditionPanel: document.getElementById('map-condition-panel'),
     };
     const mapController = suppliedMapController ?? createEntryMap({
         container: elements.map,
@@ -255,14 +257,23 @@ export function initEntryExperience({
         });
     }
 
+    function setMapConditionPanel(open) {
+        if (!elements.mapConditionToggle || !elements.mapConditionPanel) return;
+        elements.mapConditionPanel.hidden = !open;
+        elements.mapConditionToggle.setAttribute('aria-expanded', String(open));
+        elements.mapConditionToggle.textContent = open ? '분석 조건 닫기' : '분석 조건';
+    }
+
     function setMode(mode, updateHash = true) {
         elements.entryView.hidden = false;
         elements.homeOverlay.hidden = mode !== ENTRY_MODE.HOME;
         elements.scenes.hidden = mode !== ENTRY_MODE.HOME;
         elements.skipDong.hidden = mode !== ENTRY_MODE.HOME;
         elements.questionDialog.hidden = mode !== ENTRY_MODE.HOUSING;
-        elements.summaryBar.hidden = mode !== ENTRY_MODE.HOME || !summaryVisible;
+        elements.summaryBar.hidden = true;
         elements.platformView.hidden = mode !== ENTRY_MODE.MAP;
+        if (elements.mapConditionToggle) elements.mapConditionToggle.hidden = mode !== ENTRY_MODE.MAP;
+        setMapConditionPanel(false);
         if (mode === ENTRY_MODE.HOME && summaryVisible) renderHousingSummary();
         document.body.dataset.entryMode = mode;
         elements.skipLink.setAttribute('href', mode === ENTRY_MODE.MAP ? '#main-content' : '#entry-main');
@@ -401,6 +412,9 @@ export function initEntryExperience({
     elements.changeRegion?.addEventListener('click', () => setMode(ENTRY_MODE.MAP));
     elements.skipDong?.addEventListener('click', () => entryScroll.skip());
     elements.summaryTransaction?.addEventListener('click', openTransaction);
+    elements.mapConditionToggle?.addEventListener('click', () => {
+        setMapConditionPanel(elements.mapConditionPanel.hidden);
+    });
     window.addEventListener('popstate', () => setMode(readEntryMode(window.location.hash), false));
     setMode(readEntryMode(window.location.hash), false);
 
