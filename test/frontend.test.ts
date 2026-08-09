@@ -99,6 +99,9 @@ describe("Cloudflare frontend", () => {
       "housing-question-close",
       "housing-question-previous",
       "housing-question-next",
+      "housing-summary-bar",
+      "housing-summary-chips",
+      "housing-summary-transaction",
     ]) expect(html).toContain(`id="${id}"`)
 
     expect(html.match(/data-entry-route="housing"/g)).toHaveLength(2)
@@ -117,6 +120,8 @@ describe("Cloudflare frontend", () => {
     expect(routeButtonStyle).toContain("justify-content: space-between")
     expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*grid-template-columns: 1fr/)
     expect(script).toContain("preventScroll: true")
+    expect(script).toContain("getHousingSummaryChips")
+    expect(entryStyle).toContain(".housing-summary-bar")
     expect(mainScript).toContain("onRegionChange")
     expect(mainScript).toContain("onOpenTransaction")
     expect(mainScript).toContain("toStoredPreferredRegion")

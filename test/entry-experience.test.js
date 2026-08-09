@@ -101,6 +101,9 @@ function createControllerHarness() {
         'housing-question-close',
         'housing-question-previous',
         'housing-question-next',
+        'housing-summary-bar',
+        'housing-summary-chips',
+        'housing-summary-transaction',
         'entry-back',
         'entry-skip-dong',
         'entry-title',
@@ -556,6 +559,59 @@ describe('entry experience controller', () => {
         expect(profile.answers.preferredRegion).toBe('text:마포구');
         expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
         expect(harness.elements['entry-home-overlay'].hidden).toBe(false);
+    });
+
+    it('replaces the completed dialog with editable summary chips', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        initEntryExperience({ ...harness, onOpenTransaction });
+
+        await harness.housingTrigger.click();
+        const questionBody = harness.elements['housing-question-body'];
+        const next = harness.elements['housing-question-next'];
+        questionBody.children[2].value = '마포구';
+        await questionBody.children[2].dispatch('change');
+        await next.click();
+
+        for (let question = 1; question < 7; question += 1) {
+            const firstRadio = questionBody.children[0].children[1].children[0];
+            await firstRadio.dispatch('change');
+            await next.click();
+        }
+
+        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
+        expect(harness.elements['housing-summary-bar'].hidden).toBe(false);
+        expect(harness.elements['housing-summary-chips'].children).toHaveLength(5);
+
+        const householdChip = harness.elements['housing-summary-chips'].children[0];
+        expect(householdChip.dataset.housingEdit).toBe('householdType');
+        await householdChip.click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('1 / 1');
+        expect(harness.elements['housing-question-title'].textContent).toBe('함께 사는 가구 형태를 알려주세요.');
+
+        const householdChoice = questionBody.children[0].children[2].children[0];
+        await householdChoice.dispatch('change');
+        await next.click();
+        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
+        expect(harness.elements['housing-summary-chips'].children[0].textContent).toBe('부부');
+        await harness.elements['housing-summary-transaction'].click();
+        expect(onOpenTransaction).toHaveBeenCalledOnce();
+    });
+
+    it('restores a coordinate-free stored preferred region for the transaction callback', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: { preferredRegion: STORED_MAPO_REGION },
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+        initEntryExperience({ ...harness, onOpenTransaction });
+
+        await harness.mapTrigger.click();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith(STORED_MAPO_REGION);
     });
 
     it('restores a persisted preferred-region selection when housing opens', () => {

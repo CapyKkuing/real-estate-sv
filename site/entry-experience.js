@@ -6,37 +6,12 @@ import { loadMapProvider } from './map-loader.js';
 import {
     HOUSING_QUESTIONS,
     answerHousingQuestion,
+    formatHousingAnswer,
     loadHousingProfile,
     saveHousingProfile,
     toStoredPreferredRegion,
 } from './housing-profile.js';
-
-const OPTION_LABELS = Object.freeze({
-    '1인': '1인 가구',
-    '부부': '부부',
-    '자녀 포함': '자녀 포함 가구',
-    '기타': '그 외 가구',
-    'no-home': '무주택',
-    'owns-home': '주택 보유',
-    'unknown': '잘 모르겠어요',
-    'under-19': '19세 미만',
-    '19-34': '19~34세',
-    '35-64': '35~64세',
-    '65-plus': '65세 이상',
-    'under-200': '200만원 미만',
-    '200-350': '200만~350만원',
-    '350-500': '350만~500만원',
-    'over-500': '500만원 이상',
-    'under-10000': '1억원 미만',
-    '10000-25000': '1억~2억 5천만원',
-    '25000-35000': '2억 5천만~3억 5천만원',
-    'over-35000': '3억 5천만원 이상',
-    'none': '현재 주거비 없음',
-    'under-30': '30만원 미만',
-    '30-60': '30만~60만원',
-    '60-100': '60만~100만원',
-    'over-100': '100만원 이상',
-});
+import { getHousingSummaryChips } from './housing-summary.js';
 
 export function getQuestionStep(index, questions) {
     const safeIndex = Math.max(0, Math.min(index, questions.length - 1));
@@ -83,6 +58,9 @@ export function initEntryExperience({
         closeQuestion: document.getElementById('housing-question-close'),
         previousQuestion: document.getElementById('housing-question-previous'),
         nextQuestion: document.getElementById('housing-question-next'),
+        summaryBar: document.getElementById('housing-summary-bar'),
+        summaryChips: document.getElementById('housing-summary-chips'),
+        summaryTransaction: document.getElementById('housing-summary-transaction'),
     };
     const mapController = suppliedMapController ?? createEntryMap({
         container: elements.map,
@@ -108,10 +86,16 @@ export function initEntryExperience({
     let destroyed = false;
     let locationRequestId = 0;
     let questionIndex = 0;
+    let questionIds = HOUSING_QUESTIONS.map(question => question.id);
     let profile = loadHousingProfile(window.localStorage);
     let lastTrigger = null;
     let selectedRegion = SEOUL_START_REGION;
     let keyboardActivation = false;
+    let summaryVisible = HOUSING_QUESTIONS.every(question => profile.answers[question.id]);
+
+    if (profile.answers.preferredRegion && typeof profile.answers.preferredRegion === 'object') {
+        selectedRegion = toStoredPreferredRegion(profile.answers.preferredRegion);
+    }
 
     function focusMode(mode) {
         if (mode === ENTRY_MODE.HOUSING) {
@@ -131,6 +115,7 @@ export function initEntryExperience({
         profile = answerHousingQuestion(profile, questionId, value);
         saveHousingProfile(window.localStorage, profile);
         elements.nextQuestion.disabled = false;
+        if (summaryVisible) renderHousingSummary();
     }
 
     function clearAnswer(questionId) {
@@ -142,7 +127,8 @@ export function initEntryExperience({
     }
 
     function renderQuestion() {
-        const step = getQuestionStep(questionIndex, HOUSING_QUESTIONS);
+        const questions = questionIds.map(questionId => HOUSING_QUESTIONS.find(question => question.id === questionId));
+        const step = getQuestionStep(questionIndex, questions);
         const savedAnswer = profile.answers[step.question.id];
         elements.questionProgress.textContent = `${step.current} / ${step.total}`;
         elements.questionTitle.textContent = step.question.title;
@@ -212,7 +198,7 @@ export function initEntryExperience({
                 input.value = value;
                 input.checked = savedAnswer === value;
                 input.addEventListener('change', () => recordAnswer(step.question.id, value));
-                text.textContent = OPTION_LABELS[value] || value;
+                text.textContent = formatHousingAnswer(value);
                 label.append(input, text);
                 choices.append(label);
             });
@@ -225,12 +211,32 @@ export function initEntryExperience({
         elements.questionTitle.focus({ preventScroll: true });
     }
 
+    function renderHousingSummary() {
+        elements.summaryChips.replaceChildren();
+        getHousingSummaryChips(profile).forEach(chip => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.housingEdit = chip.id;
+            button.textContent = chip.label;
+            button.addEventListener('keydown', event => {
+                keyboardActivation = event.key === 'Enter' || event.key === ' ';
+            });
+            button.addEventListener('click', () => {
+                lastTrigger = button;
+                markQuestionFocusOrigin();
+                openHousingQuestion(chip.id);
+            });
+            elements.summaryChips.append(button);
+        });
+    }
+
     function setMode(mode, updateHash = true) {
         elements.entryView.hidden = false;
         elements.homeOverlay.hidden = mode !== ENTRY_MODE.HOME;
         elements.scenes.hidden = mode !== ENTRY_MODE.HOME;
         elements.skipDong.hidden = mode !== ENTRY_MODE.HOME;
         elements.questionDialog.hidden = mode !== ENTRY_MODE.HOUSING;
+        elements.summaryBar.hidden = mode !== ENTRY_MODE.HOME || !summaryVisible;
         elements.platformView.hidden = mode !== ENTRY_MODE.MAP;
         document.body.dataset.entryMode = mode;
         elements.skipLink.setAttribute('href', mode === ENTRY_MODE.MAP ? '#main-content' : '#entry-main');
@@ -244,6 +250,7 @@ export function initEntryExperience({
         selectedRegion = region;
         const storedRegion = toStoredPreferredRegion(region);
         profile = answerHousingQuestion(profile, 'preferredRegion', storedRegion);
+        if (summaryVisible) renderHousingSummary();
         try {
             onRegionChange(storedRegion);
         } catch {}
@@ -256,6 +263,18 @@ export function initEntryExperience({
 
     function openHousing(trigger) {
         lastTrigger = trigger;
+        questionIds = HOUSING_QUESTIONS.map(question => question.id);
+        questionIndex = 0;
+        setMode(ENTRY_MODE.HOUSING);
+    }
+
+    function openHousingQuestion(questionId) {
+        const nextQuestionIds = questionId === 'details'
+            ? ['incomeBand', 'assetBand', 'currentHousingCost']
+            : [questionId];
+        if (!nextQuestionIds.every(id => HOUSING_QUESTIONS.some(question => question.id === id))) return;
+        questionIds = nextQuestionIds;
+        questionIndex = 0;
         setMode(ENTRY_MODE.HOUSING);
     }
 
@@ -312,13 +331,15 @@ export function initEntryExperience({
         renderQuestion();
     });
     elements.nextQuestion.addEventListener('click', () => {
-        if (!profile.answers[HOUSING_QUESTIONS[questionIndex].id]) return;
+        if (!profile.answers[questionIds[questionIndex]]) return;
         markQuestionFocusOrigin();
-        if (questionIndex === HOUSING_QUESTIONS.length - 1) {
+        if (questionIndex === questionIds.length - 1) {
+            summaryVisible = true;
+            renderHousingSummary();
             closeHousing();
             return;
         }
-        questionIndex = nextQuestionIndex(questionIndex, HOUSING_QUESTIONS.length);
+        questionIndex = nextQuestionIndex(questionIndex, questionIds.length);
         renderQuestion();
     });
     elements.questionDialog.addEventListener('keydown', event => {
@@ -353,12 +374,14 @@ export function initEntryExperience({
     });
     elements.changeRegion?.addEventListener('click', () => setMode(ENTRY_MODE.MAP));
     elements.skipDong?.addEventListener('click', () => entryScroll.skip());
+    elements.summaryTransaction?.addEventListener('click', openTransaction);
     window.addEventListener('popstate', () => setMode(readEntryMode(window.location.hash), false));
     setMode(readEntryMode(window.location.hash), false);
 
     return {
         setMode,
         setRegion,
+        openHousingQuestion,
         getRegion: () => selectedRegion,
         destroy: () => {
             destroyed = true;
