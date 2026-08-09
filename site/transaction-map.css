@@ -1,0 +1,178 @@
+.entry-map-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+    z-index: auto;
+}
+
+.entry-map {
+    grid-area: 1 / 1 / -1 / -1;
+}
+
+.transaction-map-panel {
+    display: grid;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    z-index: 4;
+    width: 360px;
+    max-height: calc(100svh - 48px);
+    margin: 24px 24px 24px 0;
+    overflow: hidden;
+    border: 1px solid rgba(23, 49, 60, .18);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 18px 48px rgba(23, 49, 60, .18);
+    color: #17313c;
+}
+
+.transaction-map-panel[hidden] {
+    display: none;
+}
+
+.transaction-map-panel h2,
+.transaction-map-region,
+.transaction-map-count,
+.transaction-map-filter,
+.transaction-map-list-status {
+    margin: 0;
+}
+
+.transaction-map-panel h2 {
+    padding: 20px 20px 4px;
+    font-size: 18px;
+}
+
+.transaction-map-region,
+.transaction-map-count {
+    padding: 0 20px;
+}
+
+.transaction-map-region {
+    color: #526b73;
+    font-size: 14px;
+}
+
+.transaction-map-count {
+    padding-top: 8px;
+    color: #175c54;
+    font-weight: 700;
+}
+
+.transaction-map-panel[data-state="error"] .transaction-map-count {
+    color: #9c3e36;
+}
+
+.transaction-map-panel[data-state="partial"] .transaction-map-count {
+    color: #9a6500;
+}
+
+.transaction-map-filters {
+    display: grid;
+    gap: 6px;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(23, 49, 60, .1);
+}
+
+.transaction-map-filter {
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.transaction-map-filter-label {
+    flex: 0 0 48px;
+    color: #526b73;
+}
+
+.transaction-map-filter-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.transaction-map-list {
+    display: grid;
+    gap: 8px;
+    min-height: 0;
+    max-height: min(46svh, 460px);
+    padding: 16px 20px 20px;
+    overflow: auto;
+}
+
+.transaction-map-item {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid rgba(23, 49, 60, .14);
+    border-radius: 10px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    line-height: 1.45;
+    text-align: left;
+    cursor: pointer;
+}
+
+.transaction-map-item:hover,
+.transaction-map-item:focus-visible {
+    border-color: #175c54;
+    outline: 3px solid rgba(23, 92, 84, .22);
+    outline-offset: 2px;
+}
+
+.transaction-map-list-status {
+    padding: 12px 0;
+    color: #526b73;
+    font-size: 14px;
+}
+
+.transaction-map-sheet-toggle {
+    display: none;
+}
+
+@media (max-width: 720px) {
+    .entry-map-stage {
+        display: block;
+    }
+
+    .transaction-map-panel {
+        position: fixed;
+        right: 12px;
+        bottom: 0;
+        left: 12px;
+        z-index: 6;
+        width: auto;
+        max-height: min(72svh, 560px);
+        margin: 0;
+        border-radius: 16px 16px 0 0;
+    }
+
+    .transaction-map-sheet-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        margin: 12px 20px 0;
+        border: 0;
+        border-radius: 8px;
+        background: #edf4f2;
+        color: #175c54;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .transaction-map-panel.is-collapsed .transaction-map-filters,
+    .transaction-map-panel.is-collapsed .transaction-map-list {
+        display: none;
+    }
+
+    .transaction-map-panel.is-collapsed {
+        max-height: 174px;
+    }
+
+    .transaction-map-panel.is-collapsed .transaction-map-count {
+        padding-bottom: 16px;
+    }
+}

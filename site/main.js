@@ -8,8 +8,10 @@ import { formatRentPrice, mapRentTransaction, RENT_SUPPORTED_TYPES } from './ren
 import { initEntryExperience } from './entry-experience.js';
 import {
     applyEntryRegion,
+    createTransactionMapPanel,
     getCurrentTransactionPage as selectCurrentTransactionPage,
     publishTransactionMap as publishTransactionMapSnapshot,
+    subscribeTransactionMap,
 } from './transaction-map.js';
 import {
     answerHousingQuestion,
@@ -249,6 +251,7 @@ let preparedHadPartialError = false;
 let dongRequestId = 0;
 let isPreparingDongs = false;
 let demoDataActive = false;
+let transactionMapState = 'success';
 
 const paginationContainer = document.getElementById('pagination-container');
 const pageSizeSelect = document.getElementById('page-size');
@@ -263,6 +266,8 @@ const columnsMenu = document.getElementById('columns-menu');
 // 히스토리 요소
 const historyList = document.getElementById('history-list');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
+const transactionMapPanel = createTransactionMapPanel(document);
+subscribeTransactionMap(snapshot => transactionMapPanel.update(snapshot));
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -1344,11 +1349,15 @@ clearHistoryBtn.addEventListener('click', () => {
 async function runAnalysis() {
     const query = getQuerySelection();
     if (!isAnalysisReady(query)) {
+        transactionMapState = 'error';
+        publishTransactionMap({ state: 'error', items: [], total: 0 });
         setQueryStatus('시·도, 시·군·구, 기준 월을 순서대로 선택해 주세요.', 'error');
         syncFetchButton();
         return;
     }
 
+    transactionMapState = 'loading';
+    publishTransactionMap({ state: 'loading', items: [], total: 0 });
     setFetchButton(true);
     setQueryStatus(query.dong ? '선택한 읍·면·동의 거래를 분석하고 있습니다.' : '선택한 시·군·구 전체 거래를 분석하고 있습니다.');
     analysisBody.innerHTML = `<tr><td colspan="4" class="empty-state"><span class="empty-icon loading-mark">◌</span><strong>데이터를 불러오는 중입니다.</strong><span>여러 유형을 선택하면 결과를 합쳐 정리합니다.</span></td></tr>`;
@@ -1360,6 +1369,9 @@ async function runAnalysis() {
         globalData = data;
         filteredData = sortTransactions(query.dong ? data.filter(item => item.umdNm === query.dong) : data);
         currentPage = 1;
+        transactionMapState = filteredData.length === 0
+            ? 'empty'
+            : (preparedHadPartialError ? 'partial' : 'success');
 
         renderTable();
         renderMetrics(filteredData);
@@ -1385,6 +1397,7 @@ async function runAnalysis() {
         analysisBody.innerHTML = '<tr><td colspan="4" class="empty-state"><span class="empty-icon">!</span><strong>조회 조건이 변경되었습니다.</strong><span>읍·면·동 목록을 다시 불러온 뒤 분석해 주세요.</span></td></tr>';
         globalData = [];
         filteredData = [];
+        transactionMapState = 'error';
         comparisonController.setCurrentAvailable(false);
         setQueryStatus('읍·면·동 목록을 다시 불러온 뒤 분석해 주세요.', 'error');
         renderMetrics([]);
@@ -1472,20 +1485,23 @@ function getCurrentTransactionPage() {
     });
 }
 
-function publishTransactionMap() {
+function publishTransactionMap({ state = transactionMapState, items = getCurrentTransactionPage(), total = filteredData.length } = {}) {
     const query = getQuerySelection();
+    const labels = {
+        sido: sidoSelect.options[sidoSelect.selectedIndex]?.text || '',
+        gugun: gugunSelect.options[gugunSelect.selectedIndex]?.text || '',
+        dong: query.dong,
+        dealYmd: dateSelect.options[dateSelect.selectedIndex]?.text || query.dealYmd,
+    };
     publishTransactionMapSnapshot({
+        state,
         query: {
             ...query,
-            labels: {
-                sido: sidoSelect.options[sidoSelect.selectedIndex]?.text || '',
-                gugun: gugunSelect.options[gugunSelect.selectedIndex]?.text || '',
-                dong: query.dong,
-                dealYmd: dateSelect.options[dateSelect.selectedIndex]?.text || query.dealYmd,
-            },
+            regionLabel: [labels.sido, labels.gugun, labels.dong].filter(Boolean).join(' '),
+            labels,
         },
-        items: getCurrentTransactionPage(),
-        total: filteredData.length,
+        items,
+        total,
         onSelect: openDetail,
     });
 }

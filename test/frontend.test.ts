@@ -154,6 +154,22 @@ describe("Cloudflare frontend", () => {
     expect(style).toMatch(/\.entry-map-stage\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*100svh/s)
   })
 
+  it("provides a responsive transaction panel inside the existing map stage", async () => {
+    const [html, style] = await Promise.all([
+      readFile(resolve("site/index.html"), "utf8"),
+      readFile(resolve("site/transaction-map.css"), "utf8"),
+    ])
+
+    for (const id of ["transaction-map-panel", "transaction-map-sheet-toggle", "transaction-map-region", "transaction-map-count", "transaction-map-filters", "transaction-map-list"]) {
+      expect(html).toContain(`id="${id}"`)
+    }
+    expect(html).toContain('aria-expanded="true"')
+    expect(html).toContain('aria-live="polite"')
+    expect(style).toMatch(/\.entry-map-stage\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(320px,\s*380px\)/)
+    expect(style).toMatch(/@media \(max-width:\s*720px\)[\s\S]*\.transaction-map-panel\s*\{[\s\S]*position:\s*fixed[\s\S]*bottom:\s*0/)
+    expect(style).toMatch(/\.transaction-map-panel\.is-collapsed[\s\S]*\.transaction-map-filters[\s\S]*display:\s*none/)
+  })
+
   it("keeps the housing question dialog outside the hidden scene container", async () => {
     const html = await readFile(resolve("site/index.html"), "utf8")
     const entryMainStart = html.indexOf('<main id="entry-main"')

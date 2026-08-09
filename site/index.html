@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="entry.css">
+    <link rel="stylesheet" href="transaction-map.css">
     <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js" defer></script>
 </head>
 <body>
@@ -41,6 +42,14 @@
                 <div id="entry-map" class="entry-map" aria-label="지역을 탐색하는 지도"></div>
                 <p id="entry-map-status" class="entry-map-status" data-state="loading" aria-live="polite">지도 연결 중</p>
                 <p class="entry-map-attribution">© OpenFreeMap · © OpenMapTiles · Data from OpenStreetMap</p>
+                <aside id="transaction-map-panel" class="transaction-map-panel" aria-labelledby="transaction-map-title" hidden>
+                    <button id="transaction-map-sheet-toggle" class="transaction-map-sheet-toggle" type="button" aria-expanded="true">결과 접기</button>
+                    <h2 id="transaction-map-title">실거래 결과</h2>
+                    <p id="transaction-map-region" class="transaction-map-region"></p>
+                    <p id="transaction-map-count" class="transaction-map-count" aria-live="polite"></p>
+                    <div id="transaction-map-filters" class="transaction-map-filters" aria-label="조회 조건"></div>
+                    <div id="transaction-map-list" class="transaction-map-list" aria-label="현재 페이지 거래 목록"></div>
+                </aside>
             </div>
             <button id="entry-skip-dong" class="entry-skip-dong" type="button">동네까지 보기</button>
             <div id="entry-scenes" class="entry-scenes">

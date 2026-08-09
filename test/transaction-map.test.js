@@ -1,10 +1,136 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
     applyEntryRegion,
+    createTransactionMapPanel,
     getCurrentTransactionPage,
     publishTransactionMap,
     subscribeTransactionMap,
 } from '../site/transaction-map.js';
+
+class TestElement {
+    constructor(document, tagName = 'div') {
+        this.document = document;
+        this.tagName = tagName;
+        this.children = [];
+        this.attributes = new Map();
+        this.listeners = new Map();
+        this._textContent = '';
+        this.hidden = false;
+        this.className = '';
+        this.classList = {
+            toggle: (name, enabled) => {
+                const names = new Set(this.className.split(/\s+/).filter(Boolean));
+                if (enabled) names.add(name);
+                else names.delete(name);
+                this.className = [...names].join(' ');
+            },
+        };
+    }
+
+    set id(value) {
+        this.setAttribute('id', value);
+    }
+
+    get id() {
+        return this.getAttribute('id') || '';
+    }
+
+    set textContent(value) {
+        this.children = [];
+        this._textContent = String(value);
+    }
+
+    get textContent() {
+        return this.children.length
+            ? this.children.map(child => child.textContent).join('')
+            : this._textContent;
+    }
+
+    setAttribute(name, value) {
+        this.attributes.set(name, String(value));
+        if (name === 'id') this.document.elements.set(String(value), this);
+    }
+
+    getAttribute(name) {
+        return this.attributes.get(name) || null;
+    }
+
+    append(...nodes) {
+        this._textContent = '';
+        this.children.push(...nodes);
+    }
+
+    replaceChildren(...nodes) {
+        this._textContent = '';
+        this.children = nodes;
+    }
+
+    addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+    }
+
+    click() {
+        this.listeners.get('click')?.({ currentTarget: this });
+    }
+
+    querySelectorAll(selector) {
+        return this.document.querySelectorAll(selector, this);
+    }
+}
+
+class TestDocument {
+    constructor() {
+        this.elements = new Map();
+        this.root = new TestElement(this, 'main');
+    }
+
+    createElement(tagName) {
+        return new TestElement(this, tagName);
+    }
+
+    getElementById(id) {
+        return this.elements.get(id) || null;
+    }
+
+    querySelector(selector) {
+        return this.querySelectorAll(selector)[0] || null;
+    }
+
+    querySelectorAll(selector, root = this.root) {
+        const match = element => {
+            const dataMatch = selector.match(/^\[data-transaction-index(?:=\"([^\"]+)\")?\]$/);
+            if (dataMatch) return element.getAttribute('data-transaction-index') !== null
+                && (!dataMatch[1] || element.getAttribute('data-transaction-index') === dataMatch[1]);
+            return selector.startsWith('#') && element.id === selector.slice(1);
+        };
+        const found = [];
+        const visit = element => {
+            if (match(element)) found.push(element);
+            element.children.forEach(visit);
+        };
+        visit(root);
+        return found;
+    }
+}
+
+function createPanelDocument() {
+    const document = new TestDocument();
+    const panel = document.createElement('aside');
+    panel.id = 'transaction-map-panel';
+    const toggle = document.createElement('button');
+    toggle.id = 'transaction-map-sheet-toggle';
+    const region = document.createElement('p');
+    region.id = 'transaction-map-region';
+    const count = document.createElement('p');
+    count.id = 'transaction-map-count';
+    const filters = document.createElement('div');
+    filters.id = 'transaction-map-filters';
+    const list = document.createElement('div');
+    list.id = 'transaction-map-list';
+    panel.append(toggle, region, count, filters, list);
+    document.root.append(panel);
+    return document;
+}
 
 const MAPO_REGION = {
     source: 'current',
@@ -140,5 +266,47 @@ describe('transaction map bridge', () => {
 
         expect(snapshots.at(-1)).toEqual({ query, items: [], total: 0, onSelect });
         unsubscribe();
+    });
+
+    it('renders the current page and opens the existing global detail index', () => {
+        const document = createPanelDocument();
+        const controller = createTransactionMapPanel(document);
+        const onSelect = vi.fn();
+
+        controller.update({
+            state: 'success',
+            query: {
+                regionLabel: '서울 마포구',
+                transactionTypes: ['sale'],
+                propertyTypes: ['apt'],
+                dealYmd: '202608',
+            },
+            items: [{ item: { name: '테스트 아파트', typeName: '아파트', date: '2026-08-01', price: 123000 }, dataIndex: 4 }],
+            total: 1,
+            onSelect,
+        });
+
+        expect(document.getElementById('transaction-map-count').textContent).toContain('1건');
+        expect(document.querySelectorAll('[data-transaction-index]')).toHaveLength(1);
+        document.querySelector('[data-transaction-index="4"]').click();
+        expect(onSelect).toHaveBeenCalledWith(4);
+    });
+
+    it('replaces stale visible items with an error state', () => {
+        const document = createPanelDocument();
+        const controller = createTransactionMapPanel(document);
+        const query = { regionLabel: '서울 마포구', transactionTypes: ['sale'], dealYmd: '202608' };
+
+        controller.update({
+            state: 'success',
+            query,
+            items: [{ item: { name: '기존 거래' }, dataIndex: 0 }],
+            total: 1,
+            onSelect: vi.fn(),
+        });
+        controller.update({ state: 'error', query, items: [], total: 0, onSelect: vi.fn() });
+
+        expect(document.querySelectorAll('[data-transaction-index]')).toHaveLength(0);
+        expect(document.getElementById('transaction-map-count').textContent).toContain('조회할 수 없습니다');
     });
 });
