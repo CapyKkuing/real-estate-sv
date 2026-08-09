@@ -97,6 +97,7 @@ describe('housing profile', () => {
     it('formats safe object and legacy preferred-region values for display', () => {
         expect(formatHousingAnswer('19-34')).toBe('청년');
         expect(formatPreferredRegion('sido:11')).toBe('서울특별시');
+        expect(formatPreferredRegion('sido:26')).toBe('부산광역시');
         expect(formatPreferredRegion('text:마포구')).toBe('마포구');
         expect(formatPreferredRegion({ dongName: '망원동', label: '서울특별시 마포구 망원동' }))
             .toBe('서울특별시 마포구 망원동');
