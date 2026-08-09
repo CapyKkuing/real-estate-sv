@@ -139,6 +139,18 @@ describe("Cloudflare frontend", () => {
     expect(style).toMatch(/\.entry-map-stage\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*100svh/s)
   })
 
+  it("keeps the housing question dialog outside the hidden scene container", async () => {
+    const html = await readFile(resolve("site/index.html"), "utf8")
+    const entryMainStart = html.indexOf('<main id="entry-main"')
+    const entryMainEnd = html.indexOf("</main>", entryMainStart)
+    const dialogStart = html.indexOf('<aside id="housing-question-dialog"')
+
+    expect(entryMainStart).toBeGreaterThanOrEqual(0)
+    expect(dialogStart).toBeGreaterThan(entryMainStart)
+    expect(dialogStart).toBeLessThan(entryMainEnd)
+    expect(html.slice(0, dialogStart)).toMatch(/<\/section>\s*<\/div>\s*$/)
+  })
+
   it("provides an accessible three-target comparison surface", async () => {
     const [html, script, comparison, style] = await Promise.all([
       readFile(resolve("site/index.html"), "utf8"),
