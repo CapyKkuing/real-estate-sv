@@ -1,14 +1,17 @@
 .entry-main {
     position: relative;
-    min-height: calc(100svh - 84px);
-    overflow: clip;
     background: #e9f0ed;
 }
 
+.entry-map-stage {
+    position: sticky;
+    top: 0;
+    min-height: 100svh;
+    z-index: 0;
+}
+
 .entry-map {
-    position: absolute;
-    inset: 0;
-    min-height: 680px;
+    min-height: 100svh;
 }
 
 .entry-map::after {
@@ -21,15 +24,62 @@
 
 .entry-home-overlay {
     position: relative;
-    z-index: 2;
     display: grid;
-    min-height: calc(100svh - 84px);
+    min-height: 100svh;
     align-content: end;
     gap: 40px;
     width: min(1320px, calc(100% - 64px));
     margin: 0 auto;
     padding: 96px 0 48px;
     pointer-events: none;
+}
+
+.entry-scenes {
+    position: relative;
+    z-index: 2;
+    margin-top: -100svh;
+}
+
+.entry-scene {
+    display: grid;
+    width: min(1120px, calc(100% - 48px));
+    min-height: 100svh;
+    align-content: center;
+    margin: 0 auto;
+}
+
+.entry-scene h2 {
+    max-width: 16ch;
+    margin: 0;
+    color: #17313c;
+    font-family: "MaruBuri", "Nanum Myeongjo", Georgia, serif;
+    font-size: clamp(34px, 5vw, 64px);
+    line-height: 1.18;
+}
+
+.entry-scene-kicker {
+    margin: 0 0 12px;
+    color: #175c54;
+    font-family: "IBM Plex Mono", "D2Coding", monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.entry-skip-dong {
+    position: fixed;
+    z-index: 4;
+    right: 24px;
+    bottom: 24px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid rgba(23, 49, 60, .2);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .92);
+    color: #17313c;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
 }
 
 .entry-copy,
@@ -54,8 +104,7 @@
     text-wrap: balance;
 }
 
-.entry-copy h1:focus,
-.housing-question h2:focus {
+.entry-copy h1:focus {
     outline: 3px solid #9c3e36;
     outline-offset: 4px;
 }
@@ -163,12 +212,12 @@
 }
 
 .housing-question {
-    position: absolute;
+    position: fixed;
     z-index: 4;
     top: 50%;
-    right: max(32px, calc((100vw - 1320px) / 2));
-    width: min(420px, calc(100% - 48px));
-    max-height: calc(100svh - 140px);
+    left: 50%;
+    width: min(520px, calc(100% - 48px));
+    max-height: calc(100svh - 96px);
     overflow: auto;
     padding: 32px;
     border: 1px solid rgba(23, 49, 60, .16);
@@ -176,7 +225,7 @@
     background: rgba(255, 255, 255, .96);
     box-shadow: 0 26px 70px rgba(23, 49, 60, .22);
     color: #17313c;
-    transform: translateY(-50%);
+    transform: translate(-50%, -50%);
 }
 
 .housing-question-close {
@@ -199,6 +248,15 @@
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .08em;
+}
+
+.housing-question-title:focus-visible {
+    outline: 3px solid #0b6f63;
+    outline-offset: 6px;
+}
+
+.housing-question-title[data-focus-origin="pointer"]:focus-visible {
+    outline: none;
 }
 
 .housing-question h2 {
@@ -289,6 +347,46 @@
     opacity: .45;
 }
 
+.housing-summary-bar {
+    position: fixed;
+    z-index: 4;
+    right: 24px;
+    bottom: 24px;
+    display: grid;
+    gap: 12px;
+    width: min(520px, calc(100% - 48px));
+    padding: 18px;
+    border: 1px solid rgba(23, 49, 60, .16);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 18px 46px rgba(23, 49, 60, .18);
+}
+
+.housing-summary-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.housing-summary-chips button,
+#housing-summary-transaction {
+    min-height: 42px;
+    border: 1px solid #c7d8d3;
+    border-radius: 999px;
+    padding: 0 14px;
+    background: #fff;
+    color: #17313c;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+#housing-summary-transaction {
+    border-radius: 10px;
+    background: #175c54;
+    color: #fff;
+}
+
 .entry-map-status,
 .entry-map-attribution {
     position: absolute;
@@ -316,13 +414,8 @@
 }
 
 @media (max-width: 720px) {
-    .entry-main {
-        min-height: calc(100svh - 70px);
-        overflow: clip;
-    }
-
     .entry-map {
-        min-height: 100%;
+        min-height: 100svh;
     }
 
     .entry-map::after {
@@ -330,7 +423,6 @@
     }
 
     .entry-home-overlay {
-        min-height: calc(100svh - 70px);
         width: calc(100% - 32px);
         gap: 24px;
         padding: 104px 0 28px;
@@ -393,10 +485,23 @@
         font-size: 26px;
     }
 
+    .housing-summary-bar {
+        right: 12px;
+        bottom: 12px;
+        width: calc(100% - 24px);
+    }
+
     .entry-map-attribution {
         max-width: calc(100% - 24px);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .entry-map::after,
+    .entry-route button {
+        transition: none;
     }
 }

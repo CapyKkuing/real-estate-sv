@@ -80,10 +80,12 @@ describe("Cloudflare frontend", () => {
   })
 
   it("provides an accessible map-first entry and housing question surface", async () => {
-    const [html, entryStyle, script] = await Promise.all([
+    const [html, entryStyle, script, mainScript, transactionMapScript] = await Promise.all([
       readFile(resolve("site/index.html"), "utf8"),
       readFile(resolve("site/entry.css"), "utf8"),
       readFile(resolve("site/entry-experience.js"), "utf8"),
+      readFile(resolve("site/main.js"), "utf8"),
+      readFile(resolve("site/transaction-map.js"), "utf8"),
     ])
 
     for (const id of [
@@ -98,6 +100,9 @@ describe("Cloudflare frontend", () => {
       "housing-question-close",
       "housing-question-previous",
       "housing-question-next",
+      "housing-summary-bar",
+      "housing-summary-chips",
+      "housing-summary-transaction",
     ]) expect(html).toContain(`id="${id}"`)
 
     expect(html.match(/data-entry-route="housing"/g)).toHaveLength(2)
@@ -106,11 +111,86 @@ describe("Cloudflare frontend", () => {
     expect(html).toContain('aria-modal="false"')
     expect(html).toContain('aria-live="polite"')
     expect(entryStyle).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))")
+    expect(entryStyle).toMatch(/\.housing-question\s*\{[\s\S]*left:\s*50%[\s\S]*translate\(-50%,\s*-50%\)/)
+    expect(entryStyle).toMatch(/\.housing-question-title:focus-visible[\s\S]*outline:\s*3px/)
+    expect(entryStyle).toMatch(/\.housing-question-title\[data-focus-origin="pointer"\]:focus-visible[\s\S]*outline:\s*none/)
+    expect(entryStyle).not.toMatch(/\.housing-question-title:focus(?!-visible)/)
+    expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*bottom:\s*0/)
     const routeButtonStyle = entryStyle.match(/\.entry-route button \{([^}]*)\}/)?.[1] ?? ""
     expect(routeButtonStyle).toContain("width: 100%")
     expect(routeButtonStyle).toContain("justify-content: space-between")
     expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*grid-template-columns: 1fr/)
     expect(script).toContain("preventScroll: true")
+    expect(script).toContain("getHousingSummaryChips")
+    expect(entryStyle).toContain(".housing-summary-bar")
+    expect(mainScript).toContain("onRegionChange")
+    expect(mainScript).toContain("onOpenTransaction")
+    expect(mainScript).toContain("toStoredPreferredRegion")
+    const persistRegion = mainScript.match(/function persistEntryRegion\(region\) \{([\s\S]*?)\n\}/)?.[1] ?? ""
+    expect(persistRegion).toContain("loadHousingProfile")
+    expect(persistRegion).toContain("answerHousingQuestion")
+    expect(persistRegion).toContain("saveHousingProfile")
+    const openTransaction = mainScript.match(/function rememberTransactionRegion\(region\) \{([\s\S]*?)\n\}/)?.[1] ?? ""
+    expect(openTransaction).toContain("toStoredPreferredRegion")
+    expect(openTransaction).not.toMatch(/fetch\(|fetchBtn\.click|dispatchEvent|sidoSelect\.value|gugunSelect\.value/)
+    expect(transactionMapScript).toContain("applyEntryRegion")
+    expect(transactionMapScript).toContain("subscribeTransactionMap")
+    expect(mainScript).toContain("runAnalysis")
+    expect(mainScript).toContain("consumePendingTransactionRegion")
+  })
+
+  it("provides four stable scroll-map scene triggers", async () => {
+    const [html, style] = await Promise.all([
+      readFile(resolve("site/index.html"), "utf8"),
+      readFile(resolve("site/entry.css"), "utf8"),
+    ])
+
+    expect(html).toContain('id="entry-map-stage"')
+    expect(html).toContain('id="entry-skip-dong"')
+    for (const id of ["country", "sido", "sigungu", "dong"]) {
+      expect(html).toContain(`data-map-scene="${id}"`)
+      expect(html).toContain(`id="entry-scene-${id}"`)
+    }
+    expect(style).toMatch(/\.entry-map-stage\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*100svh/s)
+  })
+
+  it("provides a responsive transaction panel inside the existing map stage", async () => {
+    const [html, style] = await Promise.all([
+      readFile(resolve("site/index.html"), "utf8"),
+      readFile(resolve("site/transaction-map.css"), "utf8"),
+    ])
+
+    for (const id of ["transaction-map-panel", "transaction-map-sheet-toggle", "transaction-map-region", "transaction-map-count", "transaction-map-filters", "transaction-map-list"]) {
+      expect(html).toContain(`id="${id}"`)
+    }
+    expect(html).toContain('<ul id="transaction-map-list"')
+    expect(html).toContain('aria-expanded="true"')
+    expect(html).toContain('aria-live="polite"')
+    expect(style).toMatch(/\.entry-map-stage\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(320px,\s*380px\)/)
+    expect(style).toMatch(/@media \(max-width:\s*720px\)[\s\S]*\.transaction-map-panel\s*\{[\s\S]*position:\s*fixed[\s\S]*bottom:\s*0/)
+    expect(style).toMatch(/@media \(max-width:\s*720px\)[\s\S]*\.entry-map-stage\s*\{[\s\S]*position:\s*relative/)
+    expect(style).toMatch(/\.transaction-map-panel\.is-collapsed[\s\S]*\.transaction-map-filters[\s\S]*display:\s*none/)
+  })
+
+  it("clears the transaction panel when query controls change or active preparation fails", async () => {
+    const script = await readFile(resolve("site/main.js"), "utf8")
+    const dirty = script.match(/function markQueryDirty\(\) \{([\s\S]*?)\n\}/)?.[1] ?? ""
+
+    expect(dirty).toContain("publishTransactionMap({ state: 'loading', items: [], total: 0 })")
+    expect(script).toMatch(/function resetDongOptions\([\s\S]*?publishTransactionMap\(\{ state: 'loading', items: \[\], total: 0 \}\)/)
+    expect(script).toMatch(/if \(data === null\) \{[\s\S]*?publishTransactionMap\(\{ state: 'error', items: \[\], total: 0 \}\)/)
+  })
+
+  it("keeps the housing question dialog outside the hidden scene container", async () => {
+    const html = await readFile(resolve("site/index.html"), "utf8")
+    const entryMainStart = html.indexOf('<main id="entry-main"')
+    const entryMainEnd = html.indexOf("</main>", entryMainStart)
+    const dialogStart = html.indexOf('<aside id="housing-question-dialog"')
+
+    expect(entryMainStart).toBeGreaterThanOrEqual(0)
+    expect(dialogStart).toBeGreaterThan(entryMainStart)
+    expect(dialogStart).toBeLessThan(entryMainEnd)
+    expect(html.slice(0, dialogStart)).toMatch(/<\/section>\s*<\/div>\s*$/)
   })
 
   it("provides an accessible three-target comparison surface", async () => {

@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="entry.css">
+    <link rel="stylesheet" href="transaction-map.css">
     <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js" defer></script>
 </head>
 <body>
@@ -37,12 +38,44 @@
             <span class="entry-status"><i aria-hidden="true"></i> 데이터는 조회 시 상태 확인</span>
         </header>
         <main id="entry-main" class="entry-main">
-            <div id="entry-map" class="entry-map" aria-label="지역을 탐색하는 지도"></div>
-            <p id="entry-map-status" class="entry-map-status" data-state="loading" aria-live="polite">지도 연결 중</p>
-            <section id="entry-home-overlay" class="entry-home-overlay">
+            <div id="entry-map-stage" class="entry-map-stage">
+                <div id="entry-map" class="entry-map" aria-label="지역을 탐색하는 지도"></div>
+                <p id="entry-map-status" class="entry-map-status" data-state="loading" aria-live="polite">지도 연결 중</p>
+                <p class="entry-map-attribution">© OpenFreeMap · © OpenMapTiles · Data from OpenStreetMap</p>
+                <aside id="transaction-map-panel" class="transaction-map-panel" aria-labelledby="transaction-map-title" hidden>
+                    <button id="transaction-map-sheet-toggle" class="transaction-map-sheet-toggle" type="button" aria-expanded="true">결과 접기</button>
+                    <h2 id="transaction-map-title">실거래 결과</h2>
+                    <p id="transaction-map-region" class="transaction-map-region"></p>
+                    <p id="transaction-map-count" class="transaction-map-count" aria-live="polite"></p>
+                    <div id="transaction-map-filters" class="transaction-map-filters" aria-label="조회 조건"></div>
+                    <ul id="transaction-map-list" class="transaction-map-list" aria-label="현재 페이지 거래 목록"></ul>
+                </aside>
+            </div>
+            <button id="entry-skip-dong" class="entry-skip-dong" type="button">동네까지 보기</button>
+            <div id="entry-scenes" class="entry-scenes">
+            <section id="entry-scene-country" class="entry-scene" data-map-scene="country">
+                <div id="entry-home-overlay" class="entry-home-overlay">
+                    <div class="entry-copy">
+                        <h1 id="entry-title" tabindex="-1">조건과 시세를 함께 보고, 살 곳을 정하세요.</h1>
+                        <p>임대주택과 실제 매매·전월세 가격을 같은 지도에서 이어서 확인합니다.</p>
+                        <button id="entry-use-location" type="button">내 주변에서 시작</button>
+                        <p id="entry-location-status" aria-live="polite">위치를 사용하면 좌표가 지역 변환을 위해 카카오에 전송되며 이 서비스에는 저장되지 않습니다.</p>
+                        <button id="entry-change-region" type="button" hidden>지역 변경</button>
+                    </div>
+                </div>
+            </section>
+            <section id="entry-scene-sido" class="entry-scene" data-map-scene="sido">
+                <p class="entry-scene-kicker">대한민국에서</p>
+                <h2>살고 싶은 시·도를 먼저 고르세요.</h2>
+            </section>
+            <section id="entry-scene-sigungu" class="entry-scene" data-map-scene="sigungu">
+                <p class="entry-scene-kicker">생활권으로</p>
+                <h2>구·군 단위의 가격과 생활을 살펴보세요.</h2>
+            </section>
+            <section id="entry-scene-dong" class="entry-home-overlay entry-scene" data-map-scene="dong">
                 <div class="entry-copy">
-                    <h1 id="entry-title" tabindex="-1">조건과 시세를 함께 보고, 살 곳을 정하세요.</h1>
-                    <p>임대주택과 실제 매매·전월세 가격을 같은 지도에서 이어서 확인합니다.</p>
+                    <p class="entry-scene-kicker">내 동네까지</p>
+                    <h2>이제 내게 맞는 방법으로 찾아보세요.</h2>
                 </div>
                 <div class="entry-routes">
                     <article class="entry-route entry-route-housing">
@@ -59,17 +92,21 @@
                     </article>
                 </div>
             </section>
+            </div>
             <aside id="housing-question-dialog" class="housing-question" role="dialog" aria-modal="false" aria-labelledby="housing-question-title" hidden>
                 <button id="housing-question-close" class="housing-question-close" type="button" aria-label="질문 닫기">×</button>
                 <p id="housing-question-progress" class="housing-question-progress" aria-live="polite">1 / 7</p>
-                <h2 id="housing-question-title" tabindex="-1">어느 지역에서 살고 싶나요?</h2>
+                <h2 id="housing-question-title" class="housing-question-title" tabindex="-1">어느 지역에서 살고 싶나요?</h2>
                 <div id="housing-question-body"></div>
                 <div class="housing-question-actions">
                     <button id="housing-question-previous" type="button">이전</button>
                     <button id="housing-question-next" type="button">다음</button>
                 </div>
             </aside>
-            <p class="entry-map-attribution">© OpenFreeMap · © OpenMapTiles · Data from OpenStreetMap</p>
+            <aside id="housing-summary-bar" class="housing-summary-bar" aria-label="저장한 주거 조건" hidden>
+                <div id="housing-summary-chips" class="housing-summary-chips"></div>
+                <button id="housing-summary-transaction" type="button">이 동네 실거래 보기</button>
+            </aside>
         </main>
         <footer id="entry-guide" class="entry-footer">
             <span>실거래는 국토교통부 등 공식 출처를 사용합니다.</span>

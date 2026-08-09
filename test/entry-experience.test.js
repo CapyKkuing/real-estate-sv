@@ -5,6 +5,35 @@ import {
     nextQuestionIndex,
     previousQuestionIndex,
 } from '../site/entry-experience.js';
+import { SEOUL_CENTER } from '../site/entry-scroll.js';
+import { SEOUL_START_REGION } from '../site/location-region.js';
+
+const MAPO_REGION = Object.freeze({
+    source: 'current',
+    center: Object.freeze({ latitude: 37.55, longitude: 126.91 }),
+    sidoCode: '11',
+    lawdCd: '11440',
+    dongName: '망원동',
+    label: '서울특별시 마포구 망원동',
+});
+
+const STORED_MAPO_REGION = Object.freeze({
+    source: 'current',
+    sidoCode: '11',
+    lawdCd: '11440',
+    dongName: '망원동',
+    label: '서울특별시 마포구 망원동',
+});
+
+const COMPLETE_PROFILE_ANSWERS = Object.freeze({
+    preferredRegion: 'text:마포구',
+    householdType: '1인',
+    homelessStatus: 'no-home',
+    ageBand: '19-34',
+    incomeBand: '200-350',
+    assetBand: '10000-25000',
+    currentHousingCost: '30-60',
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -28,7 +57,11 @@ class FakeElement {
     }
 
     dispatch(type, init = {}) {
-        this.listeners[type]?.forEach(listener => listener({ preventDefault() {}, ...init }));
+        return Promise.all((this.listeners[type] || []).map(listener => listener({ preventDefault() {}, ...init })));
+    }
+
+    click() {
+        return this.dispatch('click');
     }
 
     append(...children) {
@@ -66,6 +99,10 @@ function createControllerHarness() {
         'platform-view',
         'entry-map',
         'entry-map-status',
+        'entry-use-location',
+        'entry-location-status',
+        'entry-change-region',
+        'entry-scenes',
         'entry-home-overlay',
         'housing-question-dialog',
         'housing-question-title',
@@ -74,12 +111,17 @@ function createControllerHarness() {
         'housing-question-close',
         'housing-question-previous',
         'housing-question-next',
+        'housing-summary-bar',
+        'housing-summary-chips',
+        'housing-summary-transaction',
         'entry-back',
+        'entry-skip-dong',
         'entry-title',
         'main-content',
         'sido-select',
     ];
     const elements = Object.fromEntries(ids.map(id => [id, new FakeElement()]));
+    elements['entry-change-region'].hidden = true;
     elements['sido-select'].options = [
         { textContent: '시·도 선택', value: '' },
         { textContent: '서울특별시', value: '11' },
@@ -87,10 +129,17 @@ function createControllerHarness() {
     const housingTrigger = new FakeElement('button');
     const mapTrigger = new FakeElement('button');
     const platformHousingTrigger = new FakeElement('button');
+    const platformMapTrigger = new FakeElement('button');
+    const sceneElements = ['country', 'sido', 'sigungu', 'dong'].map(id => {
+        const element = new FakeElement('section');
+        element.dataset.mapScene = id;
+        return element;
+    });
     const skipLink = new FakeElement('a');
     housingTrigger.parentElement = elements['entry-home-overlay'];
     mapTrigger.parentElement = elements['entry-home-overlay'];
     platformHousingTrigger.parentElement = elements['platform-view'];
+    platformMapTrigger.parentElement = elements['platform-view'];
     const document = {
         body: new FakeElement('body'),
         createElement: tagName => new FakeElement(tagName),
@@ -100,6 +149,8 @@ function createControllerHarness() {
             if (selector === '[data-entry-route="housing"]') return [housingTrigger];
             if (selector === '[data-entry-route="map"]') return [mapTrigger];
             if (selector === '[data-platform-mode="housing"]') return [platformHousingTrigger];
+            if (selector === '[data-platform-mode="map"]') return [platformMapTrigger];
+            if (selector === '[data-map-scene]') return sceneElements;
             return [];
         },
     };
@@ -126,6 +177,8 @@ function createControllerHarness() {
                     addControl() {},
                     on() {},
                     resize,
+                    easeTo() {},
+                    jumpTo() {},
                     remove() {},
                     getCenter: () => ({ lng: 126.978, lat: 37.5665 }),
                 };
@@ -140,15 +193,20 @@ function createControllerHarness() {
             windowListeners[type]?.forEach(listener => listener());
         },
     };
+    const loadProvider = vi.fn().mockResolvedValue({ provider: 'openfreemap' });
 
     return {
         document,
         elements,
         housingTrigger,
+        loadProvider,
         mapConstruct,
+        mapTrigger,
         platformHousingTrigger,
+        platformMapTrigger,
         resize,
         skipLink,
+        sceneElements,
         stored,
         window,
     };
@@ -178,19 +236,313 @@ describe('entry experience question navigation', () => {
 });
 
 describe('entry experience controller', () => {
-    it('keeps one map instance while switching between entry modes', () => {
+    it('hands the selected region to both transaction entry paths without persisting coordinates', async () => {
+        const harness = createControllerHarness();
+        const onRegionChange = vi.fn();
+        const onOpenTransaction = vi.fn();
+        const experience = initEntryExperience({ ...harness, onRegionChange, onOpenTransaction });
+
+        experience.setRegion(MAPO_REGION);
+        await harness.mapTrigger.click();
+        await harness.platformMapTrigger.click();
+
+        expect(onRegionChange).toHaveBeenLastCalledWith(STORED_MAPO_REGION);
+        expect(onOpenTransaction).toHaveBeenNthCalledWith(1, MAPO_REGION);
+        expect(onOpenTransaction).toHaveBeenNthCalledWith(2, MAPO_REGION);
+        expect(experience.getRegion()).toBe(MAPO_REGION);
+    });
+
+    it('keeps the derived selected region when a later housing answer is saved', async () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        const experience = initEntryExperience({ ...harness, onRegionChange: vi.fn() });
+
+        experience.setRegion(MAPO_REGION);
+        await harness.housingTrigger.click();
+        await harness.elements['housing-question-next'].click();
+        const firstHouseholdChoice = harness.elements['housing-question-body'].children[0].children[1].children[0];
+        await firstHouseholdChoice.dispatch('change');
+
+        expect(readStoredProfile(harness).answers).toMatchObject({
+            preferredRegion: STORED_MAPO_REGION,
+            householdType: '1인',
+        });
+    });
+
+    it('does not auto-query an arbitrary district for Seoul fallback', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        const fetchClick = vi.fn();
+        harness.elements['fetch-live-btn'] = { click: fetchClick };
+        const experience = initEntryExperience({ ...harness, onOpenTransaction });
+
+        experience.setRegion(SEOUL_START_REGION);
+        await harness.mapTrigger.click();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith(expect.objectContaining({ sidoCode: '11', lawdCd: null }));
+        expect(fetchClick).not.toHaveBeenCalled();
+    });
+
+    it('does not request location until the explicit start action', async () => {
+        const harness = createControllerHarness();
+        const center = { latitude: 37.55, longitude: 126.91 };
+        let resolveLocation;
+        const geolocation = {
+            getCurrentPosition: vi.fn(success => { resolveLocation = success; }),
+        };
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => center),
+            resize: vi.fn(),
+            resolveRegion: vi.fn().mockResolvedValue({
+                sidoCode: '11', lawdCd: '11440', dongName: '망원동', label: '망원동',
+            }),
+        };
+        const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        const onRegionChange = vi.fn();
+
+        const experience = initEntryExperience({ ...harness, geolocation, mapController, entryScroll, onRegionChange });
+
+        expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
+        const click = harness.elements['entry-use-location'].click();
+
+        expect(geolocation.getCurrentPosition).toHaveBeenCalledOnce();
+        expect(harness.elements['entry-use-location'].disabled).toBe(true);
+        resolveLocation({ coords: center });
+        await click;
+
+        expect(entryScroll.setCenter).toHaveBeenCalledWith(center);
+        expect(onRegionChange).toHaveBeenCalledWith({
+            source: 'current',
+            sidoCode: '11',
+            lawdCd: '11440',
+            dongName: '망원동',
+            label: '망원동',
+        });
+        expect(harness.elements['entry-use-location'].disabled).toBe(false);
+        expect(harness.elements['entry-location-status'].textContent).toContain('망원동에서 시작합니다');
+        expect(harness.elements['entry-location-status'].textContent).toContain('카카오에 전송');
+        expect(harness.elements['entry-location-status'].textContent).toContain('저장되지 않습니다');
+        expect(harness.elements['entry-change-region'].hidden).toBe(true);
+        experience.destroy();
+    });
+
+    it('ignores a pending location completion after the experience is destroyed', async () => {
+        const harness = createControllerHarness();
+        const center = { latitude: 37.55, longitude: 126.91 };
+        let resolveLocation;
+        const geolocation = {
+            getCurrentPosition: vi.fn(success => { resolveLocation = success; }),
+        };
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => center),
+            resize: vi.fn(),
+            resolveRegion: vi.fn().mockResolvedValue({
+                sidoCode: '11', lawdCd: '11440', dongName: '망원동', label: '망원동',
+            }),
+        };
+        const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        const experience = initEntryExperience({ ...harness, geolocation, mapController, entryScroll });
+        const request = harness.elements['entry-use-location'].click();
+
+        expect(harness.elements['entry-use-location'].disabled).toBe(true);
+        experience.destroy();
+        const statusBeforeCompletion = harness.elements['entry-location-status'].textContent;
+        resolveLocation({ coords: center });
+        await request;
+
+        expect(entryScroll.setCenter).not.toHaveBeenCalled();
+        expect(harness.elements['entry-location-status'].textContent).toBe(statusBeforeCompletion);
+        expect(harness.elements['entry-use-location'].disabled).toBe(true);
+    });
+
+    it('falls back to Seoul and opens manual region selection without another location request', async () => {
+        const harness = createControllerHarness();
+        const geolocation = {
+            getCurrentPosition: vi.fn((_success, failure) => failure(new Error('denied'))),
+        };
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => SEOUL_CENTER),
+            resize: vi.fn(),
+            resolveRegion: vi.fn(),
+        };
+        const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        const onRegionChange = vi.fn();
+        initEntryExperience({ ...harness, geolocation, mapController, entryScroll, onRegionChange });
+
+        await harness.elements['entry-use-location'].click();
+
+        expect(entryScroll.setCenter).toHaveBeenCalledWith(SEOUL_CENTER);
+        expect(onRegionChange).toHaveBeenCalledWith({
+            source: 'seoul',
+            sidoCode: '11',
+            lawdCd: null,
+            dongName: '',
+            label: '서울특별시',
+        });
+        expect(harness.elements['entry-location-status'].textContent).toContain('현재 위치를 확인하지 못해 서울에서 시작합니다');
+        expect(harness.elements['entry-change-region'].hidden).toBe(false);
+        await harness.elements['entry-change-region'].click();
+        expect(harness.document.body.dataset.entryMode).toBe('map');
+        expect(geolocation.getCurrentPosition).toHaveBeenCalledOnce();
+    });
+
+    it('continues the Seoul fallback UI when region persistence throws', async () => {
+        const harness = createControllerHarness();
+        const geolocation = {
+            getCurrentPosition: vi.fn((_success, failure) => failure(new Error('denied'))),
+        };
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => SEOUL_CENTER),
+            resize: vi.fn(),
+            resolveRegion: vi.fn(),
+        };
+        const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        const onRegionChange = vi.fn(() => { throw new Error('storage unavailable'); });
+        initEntryExperience({ ...harness, geolocation, mapController, entryScroll, onRegionChange });
+
+        await expect(harness.elements['entry-use-location'].click()).resolves.toEqual([undefined]);
+
+        expect(entryScroll.setCenter).toHaveBeenCalledWith(SEOUL_CENTER);
+        expect(harness.elements['entry-location-status'].textContent).toContain('현재 위치를 확인하지 못해 서울에서 시작합니다');
+        expect(harness.elements['entry-change-region'].hidden).toBe(false);
+        expect(harness.elements['entry-use-location'].disabled).toBe(false);
+    });
+
+    it('stores the resolved housing region label without coordinates', async () => {
+        const harness = createControllerHarness();
+        const center = { latitude: 37.55, longitude: 126.91 };
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => center),
+            resize: vi.fn(),
+            resolveRegion: vi.fn().mockResolvedValue({
+                sidoCode: '11', lawdCd: '11440', dongName: '망원동', label: '',
+            }),
+        };
+        const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        initEntryExperience({ ...harness, mapController, entryScroll });
+
+        await harness.housingTrigger.click();
+        await harness.elements['housing-question-body'].children[0].click();
+
+        expect(mapController.resolveRegion).toHaveBeenCalledWith(center);
+        expect(readStoredProfile(harness).answers.preferredRegion).toBe('text:망원동');
+        expect(JSON.stringify(readStoredProfile(harness))).not.toContain('map:');
+        expect(JSON.stringify(readStoredProfile(harness))).not.toContain('126.91');
+        expect(JSON.stringify(readStoredProfile(harness))).not.toContain('37.55');
+    });
+
+    it('keeps the question title focused after pointer navigation advances a question', async () => {
+        const harness = createControllerHarness();
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => ({ latitude: 37.55, longitude: 126.91 })),
+            resize: vi.fn(),
+            setCamera: vi.fn(),
+            resolveRegion: vi.fn().mockResolvedValue({ label: '마포구' }),
+        };
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        initEntryExperience({ ...harness, mapController });
+
+        await harness.housingTrigger.click();
+        harness.elements['housing-question-title'].focus.mockClear();
+        await harness.elements['housing-question-body'].children[0].click();
+        await harness.elements['housing-question-next'].click();
+
+        expect(harness.elements['housing-question-title'].focus).toHaveBeenLastCalledWith({ preventScroll: true });
+        expect(harness.elements['housing-question-title'].dataset.focusOrigin).toBe('pointer');
+        await harness.elements['housing-question-dialog'].dispatch('keydown', {
+            key: 'Enter',
+            target: harness.elements['housing-question-previous'],
+        });
+        await harness.elements['housing-question-previous'].click();
+        expect(harness.elements['housing-question-title'].dataset.focusOrigin).toBeUndefined();
+    });
+
+    it.each([
+        ['home pointer', 'housingTrigger', null, 'pointer'],
+        ['platform pointer', 'platformHousingTrigger', null, 'pointer'],
+        ['home keyboard', 'housingTrigger', 'Enter', undefined],
+        ['platform keyboard', 'platformHousingTrigger', ' ', undefined],
+    ])('classifies %s housing entry focus origin', async (_label, triggerKey, key, expectedOrigin) => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        const experience = initEntryExperience(harness);
+        const trigger = harness[triggerKey];
+        if (triggerKey === 'platformHousingTrigger') experience.setMode('map');
+        if (key) await trigger.dispatch('keydown', { key, target: trigger });
+        await trigger.click();
+
+        expect(harness.elements['housing-question-title'].dataset.focusOrigin).toBe(expectedOrigin);
+        expect(harness.elements['housing-question-title'].focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
+    it('hides scroll scenes and skip controls outside home mode', () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        const controller = initEntryExperience(harness);
+
+        controller.setMode('map');
+        expect(harness.elements['entry-scenes'].hidden).toBe(true);
+        expect(harness.elements['entry-skip-dong'].hidden).toBe(true);
+
+        controller.setMode('housing');
+        expect(harness.elements['entry-scenes'].hidden).toBe(true);
+        expect(harness.elements['entry-skip-dong'].hidden).toBe(true);
+
+        controller.setMode('home');
+        expect(harness.elements['entry-scenes'].hidden).toBe(false);
+        expect(harness.elements['entry-skip-dong'].hidden).toBe(false);
+    });
+
+    it('initializes and tears down the entry scroll controller', () => {
+        const harness = createControllerHarness();
+        const destroy = vi.fn();
+        const skip = vi.fn();
+        const createScroll = vi.fn(() => ({ destroy, skip }));
+
+        const experience = initEntryExperience({ ...harness, createScroll });
+
+        expect(createScroll).toHaveBeenCalledWith(expect.objectContaining({
+            sceneElements: harness.sceneElements,
+            reducedMotion: false,
+        }));
+        harness.elements['entry-skip-dong'].dispatch('click');
+        expect(skip).toHaveBeenCalledOnce();
+        experience.destroy();
+        expect(destroy).toHaveBeenCalledOnce();
+    });
+
+    it('keeps one map instance while switching between entry modes', async () => {
         const harness = createControllerHarness();
         vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
 
         const controller = initEntryExperience(harness);
         controller.setMode('map');
         controller.setMode('housing');
+        await vi.waitFor(() => expect(harness.mapConstruct).toHaveBeenCalledOnce());
 
-        expect(harness.mapConstruct).toHaveBeenCalledOnce();
         expect(harness.elements['platform-view'].hidden).toBe(true);
         expect(harness.elements['housing-question-dialog'].hidden).toBe(false);
         expect(harness.document.body.dataset.entryMode).toBe('housing');
-        expect(harness.resize).toHaveBeenCalledTimes(3);
+        expect(harness.resize).toHaveBeenCalledOnce();
+    });
+
+    it('injects the Task 1 loader and announces fallback without making init async', async () => {
+        const harness = createControllerHarness();
+        const loadProvider = vi.fn().mockRejectedValue(new Error('sdk failed'));
+
+        const experience = initEntryExperience({ ...harness, loadProvider });
+        expect(experience).toMatchObject({ setMode: expect.any(Function), destroy: expect.any(Function) });
+        await vi.waitFor(() => {
+            expect(loadProvider).toHaveBeenCalledWith({ document: harness.document, window: harness.window });
+            expect(harness.elements['entry-map-status'].textContent).toBe('기본 지도로 표시 중');
+        });
     });
 
     it('saves answers through all seven questions and closes on completion', () => {
@@ -217,6 +569,151 @@ describe('entry experience controller', () => {
         expect(profile.answers.preferredRegion).toBe('text:마포구');
         expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
         expect(harness.elements['entry-home-overlay'].hidden).toBe(false);
+    });
+
+    it('replaces the completed dialog with editable summary chips', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        initEntryExperience({ ...harness, onOpenTransaction });
+
+        await harness.housingTrigger.click();
+        const questionBody = harness.elements['housing-question-body'];
+        const next = harness.elements['housing-question-next'];
+        questionBody.children[2].value = '마포구';
+        await questionBody.children[2].dispatch('change');
+        await next.click();
+
+        for (let question = 1; question < 7; question += 1) {
+            const firstRadio = questionBody.children[0].children[1].children[0];
+            await firstRadio.dispatch('change');
+            await next.click();
+        }
+
+        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
+        expect(harness.elements['housing-summary-bar'].hidden).toBe(false);
+        expect(harness.elements['housing-summary-chips'].children).toHaveLength(5);
+
+        const householdChip = harness.elements['housing-summary-chips'].children[0];
+        expect(householdChip.dataset.housingEdit).toBe('householdType');
+        await householdChip.click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('1 / 1');
+        expect(harness.elements['housing-question-title'].textContent).toBe('함께 사는 가구 형태를 알려주세요.');
+
+        const householdChoice = questionBody.children[0].children[2].children[0];
+        await householdChoice.dispatch('change');
+        await next.click();
+        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
+        expect(harness.elements['housing-summary-chips'].children[0].textContent).toBe('부부');
+        await harness.elements['housing-summary-transaction'].click();
+        expect(onOpenTransaction).toHaveBeenCalledOnce();
+    });
+
+    it('restores a coordinate-free stored preferred region for the transaction callback', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: { preferredRegion: STORED_MAPO_REGION },
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+        initEntryExperience({ ...harness, onOpenTransaction });
+
+        await harness.mapTrigger.click();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith(STORED_MAPO_REGION);
+    });
+
+    it('renders five summary chips immediately for a completed stored profile', () => {
+        const harness = createControllerHarness();
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: COMPLETE_PROFILE_ANSWERS,
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+
+        initEntryExperience(harness);
+
+        expect(harness.elements['housing-summary-bar'].hidden).toBe(false);
+        expect(harness.elements['housing-summary-chips'].children).toHaveLength(5);
+    });
+
+    it('uses selected direct and city-region answers for the transaction callback', async () => {
+        const directHarness = createControllerHarness();
+        const onOpenDirectTransaction = vi.fn();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        directHarness.window.location.hash = '#housing';
+        initEntryExperience({ ...directHarness, onOpenTransaction: onOpenDirectTransaction });
+
+        const directRegion = findQuestionControl(directHarness, '원하는 지역명 직접 입력');
+        directRegion.value = '마포구';
+        await directRegion.dispatch('change');
+        await directHarness.mapTrigger.click();
+        expect(onOpenDirectTransaction).toHaveBeenCalledWith({
+            source: 'selection', sidoCode: null, lawdCd: null, dongName: '마포구', label: '마포구',
+        });
+
+        const sidoHarness = createControllerHarness();
+        const onOpenSidoTransaction = vi.fn();
+        sidoHarness.window.location.hash = '#housing';
+        initEntryExperience({ ...sidoHarness, onOpenTransaction: onOpenSidoTransaction });
+
+        const regionSelect = findQuestionControl(sidoHarness, '광역 지역 선택');
+        regionSelect.value = '11';
+        await regionSelect.dispatch('change');
+        await sidoHarness.mapTrigger.click();
+        expect(onOpenSidoTransaction).toHaveBeenCalledWith({
+            source: 'selection', sidoCode: '11', lawdCd: null, dongName: null, label: '서울특별시',
+        });
+    });
+
+    it('uses a coordinate-free current-area answer for the transaction callback', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: () => MAPO_REGION.center,
+            resolveRegion: vi.fn().mockResolvedValue(MAPO_REGION),
+            resize: vi.fn(),
+        };
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        harness.window.location.hash = '#housing';
+        initEntryExperience({
+            ...harness,
+            mapController,
+            entryScroll: { destroy: vi.fn(), skip: vi.fn(), setCenter: vi.fn() },
+            onOpenTransaction,
+        });
+
+        await harness.elements['housing-question-body'].children[0].click();
+        await harness.mapTrigger.click();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith(STORED_MAPO_REGION);
+    });
+
+    it('keeps the details editor to three questions and can reopen it after saving', async () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: COMPLETE_PROFILE_ANSWERS,
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+        initEntryExperience(harness);
+
+        const detailsChip = harness.elements['housing-summary-chips'].children[4];
+        await detailsChip.click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('1 / 3');
+        expect(harness.elements['housing-question-title'].textContent).toBe('가구 월소득 구간을 선택하세요.');
+        await harness.elements['housing-question-next'].click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('2 / 3');
+        await harness.elements['housing-question-next'].click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('3 / 3');
+        await harness.elements['housing-question-next'].click();
+        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
+
+        await harness.elements['housing-summary-chips'].children[4].click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('1 / 3');
     });
 
     it('restores a persisted preferred-region selection when housing opens', () => {

@@ -6,6 +6,19 @@ import { resolveTransactionStatus } from './transaction-status.js';
 import { listPeriodMonths, selectHistoryMonths } from './history-period.js';
 import { formatRentPrice, mapRentTransaction, RENT_SUPPORTED_TYPES } from './rent-transactions.js';
 import { initEntryExperience } from './entry-experience.js';
+import {
+    applyEntryRegion,
+    createTransactionMapPanel,
+    getCurrentTransactionPage as selectCurrentTransactionPage,
+    publishTransactionMap as publishTransactionMapSnapshot,
+    subscribeTransactionMap,
+} from './transaction-map.js';
+import {
+    answerHousingQuestion,
+    loadHousingProfile,
+    saveHousingProfile,
+    toStoredPreferredRegion,
+} from './housing-profile.js';
 
 /**
  * 부동산 분석 플랫폼 PRO v15
@@ -238,6 +251,7 @@ let preparedHadPartialError = false;
 let dongRequestId = 0;
 let isPreparingDongs = false;
 let demoDataActive = false;
+let transactionMapState = 'success';
 
 const paginationContainer = document.getElementById('pagination-container');
 const pageSizeSelect = document.getElementById('page-size');
@@ -252,6 +266,8 @@ const columnsMenu = document.getElementById('columns-menu');
 // 히스토리 요소
 const historyList = document.getElementById('history-list');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
+const transactionMapPanel = createTransactionMapPanel(document);
+subscribeTransactionMap(snapshot => transactionMapPanel.update(snapshot));
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -420,10 +436,12 @@ function initDateOptions() {
 // ===================================================================
 function markQueryDirty() {
     if (globalData.length) setQueryStatus('조회 조건이 바뀌었습니다. 다시 분석해 주세요.');
+    transactionMapState = 'loading';
+    publishTransactionMap({ state: 'loading', items: [], total: 0 });
     comparisonController.setCurrentAvailable(false);
 }
 
-function resetDongOptions(message = '읍/면/동 선택') {
+function resetDongOptions(message = '읍/면/동 선택', publishPanel = true) {
     dongSelect.innerHTML = `<option value="">${message}</option>`;
     dongSelect.disabled = true;
     preparedData = [];
@@ -432,6 +450,10 @@ function resetDongOptions(message = '읍/면/동 선택') {
     isPreparingDongs = false;
     dongRequestId += 1;
     syncFetchButton();
+    if (publishPanel) {
+        transactionMapState = 'loading';
+        publishTransactionMap({ state: 'loading', items: [], total: 0 });
+    }
 }
 
 sidoSelect.addEventListener('change', () => {
@@ -775,6 +797,8 @@ async function prepareDongOptions() {
             ? '부동산 유형 선택 후 조회'
             : '시/군/구 선택 후 조회';
         resetDongOptions(message);
+        transactionMapState = 'error';
+        publishTransactionMap({ state: 'error', items: [], total: 0 });
         return null;
     }
 
@@ -792,6 +816,8 @@ async function prepareDongOptions() {
     isPreparingDongs = false;
     if (data === null) {
         resetDongOptions('읍/면/동 조회 실패');
+        transactionMapState = 'error';
+        publishTransactionMap({ state: 'error', items: [], total: 0 });
         return null;
     }
 
@@ -921,6 +947,7 @@ function renderTable() {
         renderMetrics([]);
         renderTrend([]);
         syncColumnVisibility();
+        publishTransactionMap();
         return;
     }
 
@@ -967,6 +994,7 @@ function renderTable() {
     prevPageBtn.disabled = currentPage === 1;
     nextPageBtn.disabled = currentPage === totalPages;
     syncColumnVisibility();
+    publishTransactionMap();
 }
 
 async function loadDetailPnu(item) {
@@ -1314,7 +1342,7 @@ window.loadHistoryItem = async function (sidoCd, lawdCd, dealYmd, dong, typesStr
     if (!dong || [...dongSelect.options].some(option => option.value === dong)) {
         dongSelect.value = dong;
         syncFetchButton();
-        fetchBtn.click();
+        await runAnalysis();
     } else {
         setQueryStatus('저장된 읍·면·동을 현재 조건에서 찾을 수 없습니다.', 'error');
     }
@@ -1328,14 +1356,18 @@ clearHistoryBtn.addEventListener('click', () => {
 // ===================================================================
 // 10. 조회 버튼 이벤트 (멀티 필터 결과 렌더링)
 // ===================================================================
-fetchBtn.addEventListener('click', async () => {
+async function runAnalysis() {
     const query = getQuerySelection();
     if (!isAnalysisReady(query)) {
+        transactionMapState = 'error';
+        publishTransactionMap({ state: 'error', items: [], total: 0 });
         setQueryStatus('시·도, 시·군·구, 기준 월을 순서대로 선택해 주세요.', 'error');
         syncFetchButton();
         return;
     }
 
+    transactionMapState = 'loading';
+    publishTransactionMap({ state: 'loading', items: [], total: 0 });
     setFetchButton(true);
     setQueryStatus(query.dong ? '선택한 읍·면·동의 거래를 분석하고 있습니다.' : '선택한 시·군·구 전체 거래를 분석하고 있습니다.');
     analysisBody.innerHTML = `<tr><td colspan="4" class="empty-state"><span class="empty-icon loading-mark">◌</span><strong>데이터를 불러오는 중입니다.</strong><span>여러 유형을 선택하면 결과를 합쳐 정리합니다.</span></td></tr>`;
@@ -1347,6 +1379,9 @@ fetchBtn.addEventListener('click', async () => {
         globalData = data;
         filteredData = sortTransactions(query.dong ? data.filter(item => item.umdNm === query.dong) : data);
         currentPage = 1;
+        transactionMapState = filteredData.length === 0
+            ? 'empty'
+            : (preparedHadPartialError ? 'partial' : 'success');
 
         renderTable();
         renderMetrics(filteredData);
@@ -1372,14 +1407,18 @@ fetchBtn.addEventListener('click', async () => {
         analysisBody.innerHTML = '<tr><td colspan="4" class="empty-state"><span class="empty-icon">!</span><strong>조회 조건이 변경되었습니다.</strong><span>읍·면·동 목록을 다시 불러온 뒤 분석해 주세요.</span></td></tr>';
         globalData = [];
         filteredData = [];
+        transactionMapState = 'error';
         comparisonController.setCurrentAvailable(false);
         setQueryStatus('읍·면·동 목록을 다시 불러온 뒤 분석해 주세요.', 'error');
         renderMetrics([]);
         renderTrend([]);
+        publishTransactionMap();
     }
 
     setFetchButton(false);
-});
+}
+
+fetchBtn.addEventListener('click', runAnalysis);
 
 async function loadComparisonRegulation(current) {
     const item = current.data.find(candidate => candidate.jibun && candidate.umdNm);
@@ -1432,11 +1471,77 @@ const comparisonController = initComparison(() => {
 initDateOptions();
 gugunSelect.disabled = true;
 dateSelect.disabled = true;
-resetDongOptions('시/군/구 선택 후 조회');
+resetDongOptions('시/군/구 선택 후 조회', false);
 initTheme();
 renderMetrics([]);
 renderTrend([]);
 renderHistory();
-const entryExperience = initEntryExperience({ document, window });
+let pendingTransactionRegion = null;
+
+function persistEntryRegion(region) {
+    const profile = loadHousingProfile(window.localStorage);
+    saveHousingProfile(
+        window.localStorage,
+        answerHousingQuestion(profile, 'preferredRegion', region),
+    );
+}
+
+function getCurrentTransactionPage() {
+    return selectCurrentTransactionPage({
+        globalData,
+        filteredData,
+        currentPage,
+        itemsPerPage,
+    });
+}
+
+function publishTransactionMap({ state = transactionMapState, items = getCurrentTransactionPage(), total = filteredData.length } = {}) {
+    const query = getQuerySelection();
+    const labels = {
+        sido: sidoSelect.options[sidoSelect.selectedIndex]?.text || '',
+        gugun: gugunSelect.options[gugunSelect.selectedIndex]?.text || '',
+        dong: query.dong,
+        dealYmd: dateSelect.options[dateSelect.selectedIndex]?.text || query.dealYmd,
+    };
+    publishTransactionMapSnapshot({
+        state,
+        query: {
+            ...query,
+            regionLabel: [labels.sido, labels.gugun, labels.dong].filter(Boolean).join(' '),
+            labels,
+        },
+        items,
+        total,
+        onSelect: openDetail,
+    });
+}
+
+function rememberTransactionRegion(region) {
+    pendingTransactionRegion = toStoredPreferredRegion(region);
+    void consumePendingTransactionRegion();
+}
+
+async function consumePendingTransactionRegion() {
+    const region = pendingTransactionRegion;
+    pendingTransactionRegion = null;
+    if (!region) return;
+    await applyEntryRegion(region, {
+        controls: {
+            sido: sidoSelect,
+            gugun: gugunSelect,
+            dong: dongSelect,
+            date: dateSelect,
+        },
+        prepareDongOptions,
+        runAnalysis,
+    });
+}
+
+const entryExperience = initEntryExperience({
+    document,
+    window,
+    onRegionChange: persistEntryRegion,
+    onOpenTransaction: rememberTransactionRegion,
+});
 
 console.log("🚀 부동산 분석 PRO v15 - Cloudflare 통합 모드");
