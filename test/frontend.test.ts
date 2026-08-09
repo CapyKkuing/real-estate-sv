@@ -109,6 +109,7 @@ describe("Cloudflare frontend", () => {
     expect(entryStyle).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))")
     expect(entryStyle).toMatch(/\.housing-question\s*\{[\s\S]*left:\s*50%[\s\S]*translate\(-50%,\s*-50%\)/)
     expect(entryStyle).toMatch(/\.housing-question-title:focus-visible[\s\S]*outline:\s*3px/)
+    expect(entryStyle).toMatch(/\.housing-question-title\[data-focus-origin="pointer"\]:focus-visible[\s\S]*outline:\s*none/)
     expect(entryStyle).not.toMatch(/\.housing-question-title:focus(?!-visible)/)
     expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*bottom:\s*0/)
     const routeButtonStyle = entryStyle.match(/\.entry-route button \{([^}]*)\}/)?.[1] ?? ""

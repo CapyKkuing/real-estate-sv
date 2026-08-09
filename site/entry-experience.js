@@ -298,7 +298,13 @@ export function initEntryExperience({
         questionIndex = nextQuestionIndex(questionIndex, HOUSING_QUESTIONS.length);
         renderQuestion();
     });
+    ['pointerdown', 'touchstart'].forEach(eventType => {
+        elements.questionDialog.addEventListener(eventType, () => {
+            elements.questionTitle.dataset.focusOrigin = 'pointer';
+        });
+    });
     elements.questionDialog.addEventListener('keydown', event => {
+        delete elements.questionTitle.dataset.focusOrigin;
         if (event.key === 'Escape') closeHousing();
     });
     document.getElementById('entry-back')?.addEventListener('click', () => setMode(ENTRY_MODE.HOME));

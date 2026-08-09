@@ -439,9 +439,13 @@ describe('entry experience controller', () => {
         await harness.housingTrigger.click();
         harness.elements['housing-question-title'].focus.mockClear();
         await harness.elements['housing-question-body'].children[0].click();
+        await harness.elements['housing-question-dialog'].dispatch('pointerdown');
         await harness.elements['housing-question-next'].click();
 
         expect(harness.elements['housing-question-title'].focus).toHaveBeenLastCalledWith({ preventScroll: true });
+        expect(harness.elements['housing-question-title'].dataset.focusOrigin).toBe('pointer');
+        await harness.elements['housing-question-dialog'].dispatch('keydown', { key: 'Tab' });
+        expect(harness.elements['housing-question-title'].dataset.focusOrigin).toBeUndefined();
     });
 
     it('hides scroll scenes and skip controls outside home mode', () => {

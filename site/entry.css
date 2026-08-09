@@ -255,6 +255,10 @@
     outline-offset: 6px;
 }
 
+.housing-question-title[data-focus-origin="pointer"]:focus-visible {
+    outline: none;
+}
+
 .housing-question h2 {
     margin: 0 48px 24px 0;
     font-family: "MaruBuri", "Nanum Myeongjo", Georgia, serif;
