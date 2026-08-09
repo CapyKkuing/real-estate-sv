@@ -25,6 +25,16 @@ export function answerHousingQuestion(profile, questionId, value, now = new Date
     };
 }
 
+export function toStoredPreferredRegion(region) {
+    return {
+        source: region.source,
+        sidoCode: region.sidoCode,
+        lawdCd: region.lawdCd,
+        dongName: region.dongName,
+        label: region.label,
+    };
+}
+
 export function loadHousingProfile(storage) {
     try {
         const parsed = JSON.parse(storage.getItem(HOUSING_PROFILE_STORAGE_KEY) || 'null');

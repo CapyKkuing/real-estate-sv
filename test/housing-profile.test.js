@@ -7,6 +7,7 @@ import {
     createHousingProfile,
     loadHousingProfile,
     saveHousingProfile,
+    toStoredPreferredRegion,
 } from '../site/housing-profile.js';
 
 function memoryStorage() {
@@ -39,6 +40,30 @@ describe('housing profile', () => {
         expect(updated.updatedAt).toBe('2026-08-08T09:00:00.000Z');
     });
 
+    it('derives only persistence-safe preferred-region fields', () => {
+        const storedRegion = toStoredPreferredRegion({
+            source: 'current',
+            center: { latitude: 37.55, longitude: 126.91 },
+            latitude: 37.55,
+            longitude: 126.91,
+            sidoCode: '11',
+            lawdCd: '11440',
+            dongName: '망원동',
+            label: '서울특별시 마포구 망원동',
+        });
+
+        expect(storedRegion).toEqual({
+            source: 'current',
+            sidoCode: '11',
+            lawdCd: '11440',
+            dongName: '망원동',
+            label: '서울특별시 마포구 망원동',
+        });
+        expect(storedRegion).not.toHaveProperty('center');
+        expect(storedRegion).not.toHaveProperty('latitude');
+        expect(storedRegion).not.toHaveProperty('longitude');
+    });
+
     it('saves, restores, and clears only the versioned local profile', () => {
         const storage = memoryStorage();
         const profile = answerHousingQuestion(createHousingProfile(), 'ageBand', '19-34', '2026-08-08T09:00:00.000Z');
@@ -54,5 +79,16 @@ describe('housing profile', () => {
         expect(loadHousingProfile(storage)).toEqual(createHousingProfile());
         storage.setItem(HOUSING_PROFILE_STORAGE_KEY, JSON.stringify({ version: 99, answers: {} }));
         expect(loadHousingProfile(storage)).toEqual(createHousingProfile());
+    });
+
+    it.each(['sido:11', 'text:마포구'])('keeps legacy preferred-region answer %s readable', preferredRegion => {
+        const storage = memoryStorage();
+        storage.setItem(HOUSING_PROFILE_STORAGE_KEY, JSON.stringify({
+            version: 1,
+            answers: { preferredRegion },
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+
+        expect(loadHousingProfile(storage).answers.preferredRegion).toBe(preferredRegion);
     });
 });

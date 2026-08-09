@@ -1,13 +1,14 @@
 import { ENTRY_MODE, readEntryMode, writeEntryMode } from './entry-route.js';
 import { createEntryMap } from './entry-map.js';
 import { createEntryScroll } from './entry-scroll.js';
-import { resolveStartRegion } from './location-region.js';
+import { resolveStartRegion, SEOUL_START_REGION } from './location-region.js';
 import { loadMapProvider } from './map-loader.js';
 import {
     HOUSING_QUESTIONS,
     answerHousingQuestion,
     loadHousingProfile,
     saveHousingProfile,
+    toStoredPreferredRegion,
 } from './housing-profile.js';
 
 const OPTION_LABELS = Object.freeze({
@@ -58,6 +59,8 @@ export function initEntryExperience({
     createScroll = createEntryScroll,
     mapController: suppliedMapController,
     entryScroll: suppliedEntryScroll,
+    onRegionChange = () => {},
+    onOpenTransaction = () => {},
 }) {
     const elements = {
         skipLink: document.querySelector('.skip-link'),
@@ -107,6 +110,7 @@ export function initEntryExperience({
     let questionIndex = 0;
     let profile = loadHousingProfile(window.localStorage);
     let lastTrigger = null;
+    let selectedRegion = SEOUL_START_REGION;
 
     function focusMode(mode) {
         if (mode === ENTRY_MODE.HOUSING) {
@@ -235,6 +239,18 @@ export function initEntryExperience({
         focusMode(mode);
     }
 
+    function setRegion(region) {
+        selectedRegion = region;
+        const storedRegion = toStoredPreferredRegion(region);
+        profile = answerHousingQuestion(profile, 'preferredRegion', storedRegion);
+        onRegionChange(storedRegion);
+    }
+
+    function openTransaction() {
+        setMode(ENTRY_MODE.MAP);
+        onOpenTransaction(selectedRegion);
+    }
+
     function openHousing(trigger) {
         lastTrigger = trigger;
         setMode(ENTRY_MODE.HOUSING);
@@ -252,13 +268,13 @@ export function initEntryExperience({
         button.addEventListener('click', () => openHousing(button));
     });
     document.querySelectorAll('[data-entry-route="map"]').forEach(button => {
-        button.addEventListener('click', () => setMode(ENTRY_MODE.MAP));
+        button.addEventListener('click', openTransaction);
     });
     document.querySelectorAll('[data-platform-mode="housing"]').forEach(button => {
         button.addEventListener('click', () => openHousing(button));
     });
     document.querySelectorAll('[data-platform-mode="map"]').forEach(button => {
-        button.addEventListener('click', () => setMode(ENTRY_MODE.MAP));
+        button.addEventListener('click', openTransaction);
     });
     document.querySelectorAll('a[href="#home"]').forEach(link => {
         link.addEventListener('click', event => {
@@ -292,6 +308,7 @@ export function initEntryExperience({
             const result = await resolveStartRegion({ geolocation, mapController });
             if (destroyed || requestId !== locationRequestId) return;
             entryScroll.setCenter(result.center);
+            setRegion(result);
             const privacy = '좌표는 지역 변환을 위해 카카오에 전송되며 이 서비스에는 저장되지 않습니다.';
             if (result.source === 'current') {
                 elements.locationStatus.textContent = `${result.label || result.dongName}에서 시작합니다. ${privacy}`;
@@ -313,6 +330,8 @@ export function initEntryExperience({
 
     return {
         setMode,
+        setRegion,
+        getRegion: () => selectedRegion,
         destroy: () => {
             destroyed = true;
             locationRequestId += 1;

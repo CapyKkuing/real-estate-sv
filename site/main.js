@@ -6,6 +6,12 @@ import { resolveTransactionStatus } from './transaction-status.js';
 import { listPeriodMonths, selectHistoryMonths } from './history-period.js';
 import { formatRentPrice, mapRentTransaction, RENT_SUPPORTED_TYPES } from './rent-transactions.js';
 import { initEntryExperience } from './entry-experience.js';
+import {
+    answerHousingQuestion,
+    loadHousingProfile,
+    saveHousingProfile,
+    toStoredPreferredRegion,
+} from './housing-profile.js';
 
 /**
  * 부동산 분석 플랫폼 PRO v15
@@ -1437,6 +1443,25 @@ initTheme();
 renderMetrics([]);
 renderTrend([]);
 renderHistory();
-const entryExperience = initEntryExperience({ document, window });
+let pendingTransactionRegion = null;
+
+function persistEntryRegion(region) {
+    const profile = loadHousingProfile(window.localStorage);
+    saveHousingProfile(
+        window.localStorage,
+        answerHousingQuestion(profile, 'preferredRegion', region),
+    );
+}
+
+function rememberTransactionRegion(region) {
+    pendingTransactionRegion = toStoredPreferredRegion(region);
+}
+
+const entryExperience = initEntryExperience({
+    document,
+    window,
+    onRegionChange: persistEntryRegion,
+    onOpenTransaction: rememberTransactionRegion,
+});
 
 console.log("🚀 부동산 분석 PRO v15 - Cloudflare 통합 모드");

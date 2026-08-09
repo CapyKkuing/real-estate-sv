@@ -80,10 +80,11 @@ describe("Cloudflare frontend", () => {
   })
 
   it("provides an accessible map-first entry and housing question surface", async () => {
-    const [html, entryStyle, script] = await Promise.all([
+    const [html, entryStyle, script, mainScript] = await Promise.all([
       readFile(resolve("site/index.html"), "utf8"),
       readFile(resolve("site/entry.css"), "utf8"),
       readFile(resolve("site/entry-experience.js"), "utf8"),
+      readFile(resolve("site/main.js"), "utf8"),
     ])
 
     for (const id of [
@@ -111,6 +112,16 @@ describe("Cloudflare frontend", () => {
     expect(routeButtonStyle).toContain("justify-content: space-between")
     expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*grid-template-columns: 1fr/)
     expect(script).toContain("preventScroll: true")
+    expect(mainScript).toContain("onRegionChange")
+    expect(mainScript).toContain("onOpenTransaction")
+    expect(mainScript).toContain("toStoredPreferredRegion")
+    const persistRegion = mainScript.match(/function persistEntryRegion\(region\) \{([\s\S]*?)\n\}/)?.[1] ?? ""
+    expect(persistRegion).toContain("loadHousingProfile")
+    expect(persistRegion).toContain("answerHousingQuestion")
+    expect(persistRegion).toContain("saveHousingProfile")
+    const openTransaction = mainScript.match(/function rememberTransactionRegion\(region\) \{([\s\S]*?)\n\}/)?.[1] ?? ""
+    expect(openTransaction).toContain("toStoredPreferredRegion")
+    expect(openTransaction).not.toMatch(/fetch\(|fetchBtn\.click|dispatchEvent|sidoSelect\.value|gugunSelect\.value/)
   })
 
   it("provides four stable scroll-map scene triggers", async () => {

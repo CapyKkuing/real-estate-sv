@@ -6,6 +6,24 @@ import {
     previousQuestionIndex,
 } from '../site/entry-experience.js';
 import { SEOUL_CENTER } from '../site/entry-scroll.js';
+import { SEOUL_START_REGION } from '../site/location-region.js';
+
+const MAPO_REGION = Object.freeze({
+    source: 'current',
+    center: Object.freeze({ latitude: 37.55, longitude: 126.91 }),
+    sidoCode: '11',
+    lawdCd: '11440',
+    dongName: '망원동',
+    label: '서울특별시 마포구 망원동',
+});
+
+const STORED_MAPO_REGION = Object.freeze({
+    source: 'current',
+    sidoCode: '11',
+    lawdCd: '11440',
+    dongName: '망원동',
+    label: '서울특별시 마포구 망원동',
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -98,6 +116,7 @@ function createControllerHarness() {
     const housingTrigger = new FakeElement('button');
     const mapTrigger = new FakeElement('button');
     const platformHousingTrigger = new FakeElement('button');
+    const platformMapTrigger = new FakeElement('button');
     const sceneElements = ['country', 'sido', 'sigungu', 'dong'].map(id => {
         const element = new FakeElement('section');
         element.dataset.mapScene = id;
@@ -107,6 +126,7 @@ function createControllerHarness() {
     housingTrigger.parentElement = elements['entry-home-overlay'];
     mapTrigger.parentElement = elements['entry-home-overlay'];
     platformHousingTrigger.parentElement = elements['platform-view'];
+    platformMapTrigger.parentElement = elements['platform-view'];
     const document = {
         body: new FakeElement('body'),
         createElement: tagName => new FakeElement(tagName),
@@ -116,6 +136,7 @@ function createControllerHarness() {
             if (selector === '[data-entry-route="housing"]') return [housingTrigger];
             if (selector === '[data-entry-route="map"]') return [mapTrigger];
             if (selector === '[data-platform-mode="housing"]') return [platformHousingTrigger];
+            if (selector === '[data-platform-mode="map"]') return [platformMapTrigger];
             if (selector === '[data-map-scene]') return sceneElements;
             return [];
         },
@@ -167,7 +188,9 @@ function createControllerHarness() {
         housingTrigger,
         loadProvider,
         mapConstruct,
+        mapTrigger,
         platformHousingTrigger,
+        platformMapTrigger,
         resize,
         skipLink,
         sceneElements,
@@ -200,6 +223,53 @@ describe('entry experience question navigation', () => {
 });
 
 describe('entry experience controller', () => {
+    it('hands the selected region to both transaction entry paths without persisting coordinates', async () => {
+        const harness = createControllerHarness();
+        const onRegionChange = vi.fn();
+        const onOpenTransaction = vi.fn();
+        const experience = initEntryExperience({ ...harness, onRegionChange, onOpenTransaction });
+
+        experience.setRegion(MAPO_REGION);
+        await harness.mapTrigger.click();
+        await harness.platformMapTrigger.click();
+
+        expect(onRegionChange).toHaveBeenLastCalledWith(STORED_MAPO_REGION);
+        expect(onOpenTransaction).toHaveBeenNthCalledWith(1, MAPO_REGION);
+        expect(onOpenTransaction).toHaveBeenNthCalledWith(2, MAPO_REGION);
+        expect(experience.getRegion()).toBe(MAPO_REGION);
+    });
+
+    it('keeps the derived selected region when a later housing answer is saved', async () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        const experience = initEntryExperience({ ...harness, onRegionChange: vi.fn() });
+
+        experience.setRegion(MAPO_REGION);
+        await harness.housingTrigger.click();
+        await harness.elements['housing-question-next'].click();
+        const firstHouseholdChoice = harness.elements['housing-question-body'].children[0].children[1].children[0];
+        await firstHouseholdChoice.dispatch('change');
+
+        expect(readStoredProfile(harness).answers).toMatchObject({
+            preferredRegion: STORED_MAPO_REGION,
+            householdType: '1인',
+        });
+    });
+
+    it('does not auto-query an arbitrary district for Seoul fallback', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        const fetchClick = vi.fn();
+        harness.elements['fetch-live-btn'] = { click: fetchClick };
+        const experience = initEntryExperience({ ...harness, onOpenTransaction });
+
+        experience.setRegion(SEOUL_START_REGION);
+        await harness.mapTrigger.click();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith(expect.objectContaining({ sidoCode: '11', lawdCd: null }));
+        expect(fetchClick).not.toHaveBeenCalled();
+    });
+
     it('does not request location until the explicit start action', async () => {
         const harness = createControllerHarness();
         const center = { latitude: 37.55, longitude: 126.91 };
@@ -216,8 +286,9 @@ describe('entry experience controller', () => {
             }),
         };
         const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        const onRegionChange = vi.fn();
 
-        const experience = initEntryExperience({ ...harness, geolocation, mapController, entryScroll });
+        const experience = initEntryExperience({ ...harness, geolocation, mapController, entryScroll, onRegionChange });
 
         expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
         const click = harness.elements['entry-use-location'].click();
@@ -228,6 +299,13 @@ describe('entry experience controller', () => {
         await click;
 
         expect(entryScroll.setCenter).toHaveBeenCalledWith(center);
+        expect(onRegionChange).toHaveBeenCalledWith({
+            source: 'current',
+            sidoCode: '11',
+            lawdCd: '11440',
+            dongName: '망원동',
+            label: '망원동',
+        });
         expect(harness.elements['entry-use-location'].disabled).toBe(false);
         expect(harness.elements['entry-location-status'].textContent).toContain('망원동에서 시작합니다');
         expect(harness.elements['entry-location-status'].textContent).toContain('카카오에 전송');
@@ -278,11 +356,19 @@ describe('entry experience controller', () => {
             resolveRegion: vi.fn(),
         };
         const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
-        initEntryExperience({ ...harness, geolocation, mapController, entryScroll });
+        const onRegionChange = vi.fn();
+        initEntryExperience({ ...harness, geolocation, mapController, entryScroll, onRegionChange });
 
         await harness.elements['entry-use-location'].click();
 
         expect(entryScroll.setCenter).toHaveBeenCalledWith(SEOUL_CENTER);
+        expect(onRegionChange).toHaveBeenCalledWith({
+            source: 'seoul',
+            sidoCode: '11',
+            lawdCd: null,
+            dongName: '',
+            label: '서울특별시',
+        });
         expect(harness.elements['entry-location-status'].textContent).toContain('현재 위치를 확인하지 못해 서울에서 시작합니다');
         expect(harness.elements['entry-change-region'].hidden).toBe(false);
         await harness.elements['entry-change-region'].click();
