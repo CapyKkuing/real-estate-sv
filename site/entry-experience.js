@@ -7,6 +7,7 @@ import {
     HOUSING_QUESTIONS,
     answerHousingQuestion,
     formatHousingAnswer,
+    formatPreferredRegion,
     loadHousingProfile,
     saveHousingProfile,
     toStoredPreferredRegion,
@@ -93,9 +94,7 @@ export function initEntryExperience({
     let keyboardActivation = false;
     let summaryVisible = HOUSING_QUESTIONS.every(question => profile.answers[question.id]);
 
-    if (profile.answers.preferredRegion && typeof profile.answers.preferredRegion === 'object') {
-        selectedRegion = toStoredPreferredRegion(profile.answers.preferredRegion);
-    }
+    selectedRegion = selectedRegionForAnswer(profile.answers.preferredRegion) || SEOUL_START_REGION;
 
     function focusMode(mode) {
         if (mode === ENTRY_MODE.HOUSING) {
@@ -126,6 +125,30 @@ export function initEntryExperience({
         elements.nextQuestion.disabled = true;
     }
 
+    function selectedRegionForAnswer(answer) {
+        if (answer && typeof answer === 'object') return toStoredPreferredRegion(answer);
+        if (typeof answer !== 'string') return null;
+        if (answer.startsWith('text:')) {
+            const label = formatPreferredRegion(answer);
+            return { source: 'selection', sidoCode: null, lawdCd: null, dongName: label, label };
+        }
+        if (answer.startsWith('sido:')) {
+            return {
+                source: 'selection',
+                sidoCode: answer.slice('sido:'.length),
+                lawdCd: null,
+                dongName: null,
+                label: formatPreferredRegion(answer),
+            };
+        }
+        return null;
+    }
+
+    function recordPreferredRegion(answer, region) {
+        recordAnswer('preferredRegion', answer);
+        selectedRegion = region ? toStoredPreferredRegion(region) : selectedRegionForAnswer(answer) || SEOUL_START_REGION;
+    }
+
     function renderQuestion() {
         const questions = questionIds.map(questionId => HOUSING_QUESTIONS.find(question => question.id === questionId));
         const step = getQuestionStep(questionIndex, questions);
@@ -144,7 +167,7 @@ export function initEntryExperience({
                 try {
                     const region = await mapController.resolveRegion(center);
                     const label = region.label || region.dongName;
-                    if (label) recordAnswer(step.question.id, `text:${label}`);
+                    if (label) recordPreferredRegion(`text:${label}`, region);
                 } catch {}
             });
 
@@ -161,9 +184,10 @@ export function initEntryExperience({
             regionSelect.addEventListener('change', () => {
                 directRegion.value = '';
                 if (regionSelect.value) {
-                    recordAnswer(step.question.id, `sido:${regionSelect.value}`);
+                    recordPreferredRegion(`sido:${regionSelect.value}`);
                 } else {
                     clearAnswer(step.question.id);
+                    selectedRegion = SEOUL_START_REGION;
                 }
             });
 
@@ -178,9 +202,10 @@ export function initEntryExperience({
                 const value = directRegion.value.trim();
                 regionSelect.value = '';
                 if (value) {
-                    recordAnswer(step.question.id, `text:${value}`);
+                    recordPreferredRegion(`text:${value}`);
                 } else {
                     clearAnswer(step.question.id);
+                    selectedRegion = SEOUL_START_REGION;
                 }
             });
             elements.questionBody.append(currentArea, regionSelect, directRegion);
@@ -238,6 +263,7 @@ export function initEntryExperience({
         elements.questionDialog.hidden = mode !== ENTRY_MODE.HOUSING;
         elements.summaryBar.hidden = mode !== ENTRY_MODE.HOME || !summaryVisible;
         elements.platformView.hidden = mode !== ENTRY_MODE.MAP;
+        if (mode === ENTRY_MODE.HOME && summaryVisible) renderHousingSummary();
         document.body.dataset.entryMode = mode;
         elements.skipLink.setAttribute('href', mode === ENTRY_MODE.MAP ? '#main-content' : '#entry-main');
         if (updateHash) writeEntryMode(window.history, window.location, mode);

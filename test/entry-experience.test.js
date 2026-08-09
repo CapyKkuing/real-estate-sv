@@ -25,6 +25,16 @@ const STORED_MAPO_REGION = Object.freeze({
     label: '서울특별시 마포구 망원동',
 });
 
+const COMPLETE_PROFILE_ANSWERS = Object.freeze({
+    preferredRegion: 'text:마포구',
+    householdType: '1인',
+    homelessStatus: 'no-home',
+    ageBand: '19-34',
+    incomeBand: '200-350',
+    assetBand: '10000-25000',
+    currentHousingCost: '30-60',
+});
+
 afterEach(() => vi.unstubAllGlobals());
 
 class FakeElement {
@@ -612,6 +622,98 @@ describe('entry experience controller', () => {
         await harness.mapTrigger.click();
 
         expect(onOpenTransaction).toHaveBeenCalledWith(STORED_MAPO_REGION);
+    });
+
+    it('renders five summary chips immediately for a completed stored profile', () => {
+        const harness = createControllerHarness();
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: COMPLETE_PROFILE_ANSWERS,
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+
+        initEntryExperience(harness);
+
+        expect(harness.elements['housing-summary-bar'].hidden).toBe(false);
+        expect(harness.elements['housing-summary-chips'].children).toHaveLength(5);
+    });
+
+    it('uses selected direct and city-region answers for the transaction callback', async () => {
+        const directHarness = createControllerHarness();
+        const onOpenDirectTransaction = vi.fn();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        directHarness.window.location.hash = '#housing';
+        initEntryExperience({ ...directHarness, onOpenTransaction: onOpenDirectTransaction });
+
+        const directRegion = findQuestionControl(directHarness, '원하는 지역명 직접 입력');
+        directRegion.value = '마포구';
+        await directRegion.dispatch('change');
+        await directHarness.mapTrigger.click();
+        expect(onOpenDirectTransaction).toHaveBeenCalledWith({
+            source: 'selection', sidoCode: null, lawdCd: null, dongName: '마포구', label: '마포구',
+        });
+
+        const sidoHarness = createControllerHarness();
+        const onOpenSidoTransaction = vi.fn();
+        sidoHarness.window.location.hash = '#housing';
+        initEntryExperience({ ...sidoHarness, onOpenTransaction: onOpenSidoTransaction });
+
+        const regionSelect = findQuestionControl(sidoHarness, '광역 지역 선택');
+        regionSelect.value = '11';
+        await regionSelect.dispatch('change');
+        await sidoHarness.mapTrigger.click();
+        expect(onOpenSidoTransaction).toHaveBeenCalledWith({
+            source: 'selection', sidoCode: '11', lawdCd: null, dongName: null, label: '서울특별시',
+        });
+    });
+
+    it('uses a coordinate-free current-area answer for the transaction callback', async () => {
+        const harness = createControllerHarness();
+        const onOpenTransaction = vi.fn();
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: () => MAPO_REGION.center,
+            resolveRegion: vi.fn().mockResolvedValue(MAPO_REGION),
+            resize: vi.fn(),
+        };
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        harness.window.location.hash = '#housing';
+        initEntryExperience({
+            ...harness,
+            mapController,
+            entryScroll: { destroy: vi.fn(), skip: vi.fn(), setCenter: vi.fn() },
+            onOpenTransaction,
+        });
+
+        await harness.elements['housing-question-body'].children[0].click();
+        await harness.mapTrigger.click();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith(STORED_MAPO_REGION);
+    });
+
+    it('keeps the details editor to three questions and can reopen it after saving', async () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        harness.stored.set('jipgilHousingProfile.v1', JSON.stringify({
+            version: 1,
+            answers: COMPLETE_PROFILE_ANSWERS,
+            updatedAt: '2026-08-08T09:00:00.000Z',
+        }));
+        initEntryExperience(harness);
+
+        const detailsChip = harness.elements['housing-summary-chips'].children[4];
+        await detailsChip.click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('1 / 3');
+        expect(harness.elements['housing-question-title'].textContent).toBe('가구 월소득 구간을 선택하세요.');
+        await harness.elements['housing-question-next'].click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('2 / 3');
+        await harness.elements['housing-question-next'].click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('3 / 3');
+        await harness.elements['housing-question-next'].click();
+        expect(harness.elements['housing-question-dialog'].hidden).toBe(true);
+
+        await harness.elements['housing-summary-chips'].children[4].click();
+        expect(harness.elements['housing-question-progress'].textContent).toBe('1 / 3');
     });
 
     it('restores a persisted preferred-region selection when housing opens', () => {
