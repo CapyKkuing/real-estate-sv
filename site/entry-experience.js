@@ -58,6 +58,7 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
         mainContent: document.getElementById('main-content'),
         map: document.getElementById('entry-map'),
         mapStatus: document.getElementById('entry-map-status'),
+        scenes: document.getElementById('entry-scenes'),
         skipDong: document.getElementById('entry-skip-dong'),
         homeOverlay: document.getElementById('entry-home-overlay'),
         questionDialog: document.getElementById('housing-question-dialog'),
@@ -203,6 +204,8 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
     function setMode(mode, updateHash = true) {
         elements.entryView.hidden = false;
         elements.homeOverlay.hidden = mode !== ENTRY_MODE.HOME;
+        elements.scenes.hidden = mode !== ENTRY_MODE.HOME;
+        elements.skipDong.hidden = mode !== ENTRY_MODE.HOME;
         elements.questionDialog.hidden = mode !== ENTRY_MODE.HOUSING;
         elements.platformView.hidden = mode !== ENTRY_MODE.MAP;
         document.body.dataset.entryMode = mode;

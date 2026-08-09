@@ -66,6 +66,7 @@ function createControllerHarness() {
         'platform-view',
         'entry-map',
         'entry-map-status',
+        'entry-scenes',
         'entry-home-overlay',
         'housing-question-dialog',
         'housing-question-title',
@@ -190,6 +191,24 @@ describe('entry experience question navigation', () => {
 });
 
 describe('entry experience controller', () => {
+    it('hides scroll scenes and skip controls outside home mode', () => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        const controller = initEntryExperience(harness);
+
+        controller.setMode('map');
+        expect(harness.elements['entry-scenes'].hidden).toBe(true);
+        expect(harness.elements['entry-skip-dong'].hidden).toBe(true);
+
+        controller.setMode('housing');
+        expect(harness.elements['entry-scenes'].hidden).toBe(true);
+        expect(harness.elements['entry-skip-dong'].hidden).toBe(true);
+
+        controller.setMode('home');
+        expect(harness.elements['entry-scenes'].hidden).toBe(false);
+        expect(harness.elements['entry-skip-dong'].hidden).toBe(false);
+    });
+
     it('initializes and tears down the entry scroll controller', () => {
         const harness = createControllerHarness();
         const destroy = vi.fn();
