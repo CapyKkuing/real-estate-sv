@@ -1,5 +1,6 @@
 import { ENTRY_MODE, readEntryMode, writeEntryMode } from './entry-route.js';
 import { createEntryMap } from './entry-map.js';
+import { createEntryScroll } from './entry-scroll.js';
 import { loadMapProvider } from './map-loader.js';
 import {
     HOUSING_QUESTIONS,
@@ -48,7 +49,7 @@ export function previousQuestionIndex(index) {
     return Math.max(index - 1, 0);
 }
 
-export function initEntryExperience({ document, window, loadProvider = loadMapProvider }) {
+export function initEntryExperience({ document, window, loadProvider = loadMapProvider, createScroll = createEntryScroll }) {
     const elements = {
         skipLink: document.querySelector('.skip-link'),
         entryView: document.getElementById('entry-view'),
@@ -57,6 +58,7 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
         mainContent: document.getElementById('main-content'),
         map: document.getElementById('entry-map'),
         mapStatus: document.getElementById('entry-map-status'),
+        skipDong: document.getElementById('entry-skip-dong'),
         homeOverlay: document.getElementById('entry-home-overlay'),
         questionDialog: document.getElementById('housing-question-dialog'),
         questionTitle: document.getElementById('housing-question-title'),
@@ -78,6 +80,14 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
                     ? '기본 지도로 표시 중'
                     : '지도를 불러오지 못했습니다. 아래 경로 선택은 계속 사용할 수 있습니다.';
         },
+    });
+    const entryScroll = createScroll({
+        sceneElements: document.querySelectorAll('[data-map-scene]'),
+        mapController,
+        observerFactory: typeof window.IntersectionObserver === 'function'
+            ? (callback, options) => new window.IntersectionObserver(callback, options)
+            : null,
+        reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
     });
     let questionIndex = 0;
     let profile = loadHousingProfile(window.localStorage);
@@ -252,8 +262,15 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
         if (event.key === 'Escape') closeHousing();
     });
     document.getElementById('entry-back')?.addEventListener('click', () => setMode(ENTRY_MODE.HOME));
+    elements.skipDong?.addEventListener('click', () => entryScroll.skip());
     window.addEventListener('popstate', () => setMode(readEntryMode(window.location.hash), false));
     setMode(readEntryMode(window.location.hash), false);
 
-    return { setMode, destroy: () => mapController.destroy() };
+    return {
+        setMode,
+        destroy: () => {
+            entryScroll.destroy();
+            mapController.destroy();
+        },
+    };
 }

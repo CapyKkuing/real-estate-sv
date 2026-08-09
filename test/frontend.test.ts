@@ -113,6 +113,21 @@ describe("Cloudflare frontend", () => {
     expect(script).toContain("preventScroll: true")
   })
 
+  it("provides four stable scroll-map scene triggers", async () => {
+    const [html, style] = await Promise.all([
+      readFile(resolve("site/index.html"), "utf8"),
+      readFile(resolve("site/entry.css"), "utf8"),
+    ])
+
+    expect(html).toContain('id="entry-map-stage"')
+    expect(html).toContain('id="entry-skip-dong"')
+    for (const id of ["country", "sido", "sigungu", "dong"]) {
+      expect(html).toContain(`data-map-scene="${id}"`)
+      expect(html).toContain(`id="entry-scene-${id}"`)
+    }
+    expect(style).toMatch(/\.entry-map-stage\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*min-height:\s*100svh/s)
+  })
+
   it("provides an accessible three-target comparison surface", async () => {
     const [html, script, comparison, style] = await Promise.all([
       readFile(resolve("site/index.html"), "utf8"),

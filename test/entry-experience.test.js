@@ -75,6 +75,7 @@ function createControllerHarness() {
         'housing-question-previous',
         'housing-question-next',
         'entry-back',
+        'entry-skip-dong',
         'entry-title',
         'main-content',
         'sido-select',
@@ -87,6 +88,11 @@ function createControllerHarness() {
     const housingTrigger = new FakeElement('button');
     const mapTrigger = new FakeElement('button');
     const platformHousingTrigger = new FakeElement('button');
+    const sceneElements = ['country', 'sido', 'sigungu', 'dong'].map(id => {
+        const element = new FakeElement('section');
+        element.dataset.mapScene = id;
+        return element;
+    });
     const skipLink = new FakeElement('a');
     housingTrigger.parentElement = elements['entry-home-overlay'];
     mapTrigger.parentElement = elements['entry-home-overlay'];
@@ -100,6 +106,7 @@ function createControllerHarness() {
             if (selector === '[data-entry-route="housing"]') return [housingTrigger];
             if (selector === '[data-entry-route="map"]') return [mapTrigger];
             if (selector === '[data-platform-mode="housing"]') return [platformHousingTrigger];
+            if (selector === '[data-map-scene]') return sceneElements;
             return [];
         },
     };
@@ -126,6 +133,8 @@ function createControllerHarness() {
                     addControl() {},
                     on() {},
                     resize,
+                    easeTo() {},
+                    jumpTo() {},
                     remove() {},
                     getCenter: () => ({ lng: 126.978, lat: 37.5665 }),
                 };
@@ -151,6 +160,7 @@ function createControllerHarness() {
         platformHousingTrigger,
         resize,
         skipLink,
+        sceneElements,
         stored,
         window,
     };
@@ -180,6 +190,24 @@ describe('entry experience question navigation', () => {
 });
 
 describe('entry experience controller', () => {
+    it('initializes and tears down the entry scroll controller', () => {
+        const harness = createControllerHarness();
+        const destroy = vi.fn();
+        const skip = vi.fn();
+        const createScroll = vi.fn(() => ({ destroy, skip }));
+
+        const experience = initEntryExperience({ ...harness, createScroll });
+
+        expect(createScroll).toHaveBeenCalledWith(expect.objectContaining({
+            sceneElements: harness.sceneElements,
+            reducedMotion: false,
+        }));
+        harness.elements['entry-skip-dong'].dispatch('click');
+        expect(skip).toHaveBeenCalledOnce();
+        experience.destroy();
+        expect(destroy).toHaveBeenCalledOnce();
+    });
+
     it('keeps one map instance while switching between entry modes', async () => {
         const harness = createControllerHarness();
         vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
