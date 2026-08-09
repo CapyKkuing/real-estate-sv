@@ -128,6 +128,7 @@ describe("Cloudflare frontend", () => {
     expect(html).toContain('aria-controls="map-condition-panel"')
     expect(html).toContain('aria-expanded="false"')
     expect(entryStyle).toMatch(/body\[data-entry-mode="map"\][\s\S]*\.map-condition-panel[\s\S]*position:\s*fixed/)
+    expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*\.map-condition-panel\s*\{[\s\S]*z-index:\s*7[\s\S]*\.map-condition-panel #fetch-live-btn\s*\{[\s\S]*position:\s*fixed[\s\S]*z-index:\s*8[\s\S]*bottom:\s*24px/)
     expect(script).toContain("mapConditionPanel")
     expect(mainScript).toContain("onRegionChange")
     expect(mainScript).toContain("onOpenTransaction")
