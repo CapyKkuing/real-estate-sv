@@ -833,7 +833,7 @@ git diff --check
 Expected: all exit `0`.
 
 ```bash
-git add site/entry-experience.js site/index.html site/entry.css test/entry-experience.test.js test/frontend.test.ts
+git add site/entry-scroll.js site/index.html site/entry.css site/entry-experience.js test/entry-scroll.test.js test/entry-experience.test.js test/frontend.test.ts
 git commit -m "feat: add scroll-driven map scenes"
 ```
 
