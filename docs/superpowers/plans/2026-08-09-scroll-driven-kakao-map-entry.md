@@ -732,33 +732,62 @@ git commit -m "feat: add Kakao map controller with fallback"
 
 **Files:**
 
-- Create: `site/entry-scroll.js`
-- Create: `test/entry-scroll.test.js`
+- Modify: `site/entry-experience.js`
+- Modify: `test/entry-experience.test.js`
 - Modify: `site/index.html`
 - Modify: `site/entry.css`
 - Modify: `test/frontend.test.ts`
 
 **Interfaces:**
 
-- Consumes: four `[data-map-scene]` elements, `IntersectionObserver`, map controller
-- Produces: `createEntryScroll({ scenes, mapController, observerFactory, reducedMotion, onSceneChange })`
-- Scene values: `country`, `sido`, `sigungu`, `dong`
+- Consumes: four `[data-map-scene]` elements and the existing Task 2 map controller
+- Produces: `createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion, onSceneChange })`
+- `site/entry-experience.js` exports `SEOUL_CENTER` as `{ longitude: 126.978, latitude: 37.5665 }`, `ENTRY_SCENE_IDS`, `getEntryScenes()`, and `getScene(id)`.
+- `getEntryScenes()` uses only `SEOUL_CENTER` (no location permission, region lookup, or `region` input) and maps `country → 13`, `sido → 11`, `sigungu → 8`, `dong → 6`; each scene exposes the camera as `{ center: SEOUL_CENTER, level }`.
+- `getScene(id)` returns the matching scene/camera mapping for transition code and returns `null` for an unknown id. `mapController.setCamera` is called with exactly `{ center: { longitude, latitude }, level, animate }`.
+- Runtime `reducedMotion` is supplied from `window.matchMedia('(prefers-reduced-motion: reduce)').matches`, while tests may inject it.
+- Task 3 supplies only stable scene IDs/data attributes for Task 4; it does not add location UI or region calculation.
 
 - [ ] **Step 1: Write the failing pure scene tests**
 
 ```js
-expect(getEntryScenes({ center: SEOUL_CENTER, region: null })).toEqual([
-  { id: 'country', level: 13 },
-  { id: 'sido', level: 11 },
-  { id: 'sigungu', level: 8 },
-  { id: 'dong', level: 6 },
+expect(getEntryScenes()).toEqual([
+  { id: 'country', camera: { center: SEOUL_CENTER, level: 13 } },
+  { id: 'sido', camera: { center: SEOUL_CENTER, level: 11 } },
+  { id: 'sigungu', camera: { center: SEOUL_CENTER, level: 8 } },
+  { id: 'dong', camera: { center: SEOUL_CENTER, level: 6 } },
 ])
+expect(getScene('dong')).toEqual(getEntryScenes()[3])
+expect(getScene('unknown')).toBeNull()
 
 it('moves once when the active scene changes', () => {
   const mapController = { setCamera: vi.fn(), setInteractive: vi.fn() }
-  const scroll = createEntryScroll({ scenes: getEntryScenes(input), mapController, observerFactory })
+  const scroll = createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion: false })
   observer.enter('sido')
   observer.enter('sido')
+  expect(mapController.setCamera).toHaveBeenCalledWith({
+    center: SEOUL_CENTER,
+    level: 11,
+    animate: true,
+  })
+  expect(mapController.setCamera).toHaveBeenCalledOnce()
+  scroll.destroy()
+})
+
+it('applies only the first scene when IntersectionObserver is unavailable', () => {
+  const mapController = { setCamera: vi.fn(), setInteractive: vi.fn() }
+  const scroll = createEntryScroll({ sceneElements, mapController, observerFactory: null, reducedMotion: false })
+  expect(mapController.setCamera).toHaveBeenCalledWith({ center: SEOUL_CENTER, level: 13, animate: true })
+  expect(mapController.setCamera).toHaveBeenCalledOnce()
+  scroll.destroy()
+})
+
+it('scrolls to dong and applies its camera exactly once when skipped', () => {
+  const mapController = { setCamera: vi.fn(), setInteractive: vi.fn() }
+  const scroll = createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion: true })
+  scroll.skip()
+  expect(sceneElements[3].scrollIntoView).toHaveBeenCalledOnce()
+  expect(mapController.setCamera).toHaveBeenCalledWith({ center: SEOUL_CENTER, level: 6, animate: false })
   expect(mapController.setCamera).toHaveBeenCalledOnce()
   scroll.destroy()
 })
@@ -766,9 +795,9 @@ it('moves once when the active scene changes', () => {
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `npx vitest run test/entry-scroll.test.js`
+Run: `npx vitest run test/entry-experience.test.js`
 
-Expected: FAIL because `site/entry-scroll.js` does not exist.
+Expected: FAIL because the new scene exports and `createEntryScroll` lifecycle wiring are not implemented.
 
 - [ ] **Step 3: Implement scene transitions without wheel hijacking**
 
@@ -776,34 +805,23 @@ Expected: FAIL because `site/entry-scroll.js` does not exist.
 export const ENTRY_SCENE_IDS = Object.freeze(['country', 'sido', 'sigungu', 'dong']);
 
 export function createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion, onSceneChange }) {
-    let activeId = null;
-    const observer = observerFactory(entries => {
-        const entry = entries.find(item => item.isIntersecting);
-        const id = entry?.target?.dataset?.mapScene;
-        if (!id || id === activeId) return;
-        activeId = id;
-        const scene = getScene(id);
-        mapController.setCamera({ ...scene, animate: !reducedMotion });
-        mapController.setInteractive(id === 'dong');
-        onSceneChange(id);
-    });
-    sceneElements.forEach(element => observer.observe(element));
-    return { skip, destroy: () => observer.disconnect() };
+    // Keep one active id, apply a scene once, and use getScene(id) for camera lookup.
+    // If IntersectionObserver is unavailable, apply sceneElements[0] once only.
 }
 ```
 
-Do not register `wheel` handlers and do not call `preventDefault()` on scroll. The skip button scrolls the `dong` scene into view and directly applies that scene once.
+Reuse Task 2's map controller. Observe `sceneElements` with `IntersectionObserver`, ignore repeated entries for the active id, and call `setCamera({ center, level, animate: !reducedMotion })` only when the scene changes. If `IntersectionObserver` is unavailable, apply the first scene once and keep `destroy()` safe. `skip()` must call the explicit dong scene's `scrollIntoView()` and apply that camera exactly once; the subsequent observer entry must be deduplicated. Do not register `wheel` handlers and do not call `preventDefault()` on scroll. `entry-experience.js` must initialize this scroll controller and call `destroy()` from its existing experience teardown.
 
 - [ ] **Step 4: Add semantic scenes and sticky layout**
 
-`site/index.html` must contain one sticky map stage and four content scenes. The final scene contains equal-weight `내게 맞는 주거 찾기` and `지도에서 실거래 찾기` buttons. `site/entry.css` uses `position: sticky; top: 0; min-height: 100svh` for the map stage and normal document flow for scene triggers. Add `prefers-reduced-motion: reduce` rules that remove camera-related transition decoration.
+`site/index.html` must contain a stable sticky stage `id="entry-map-stage"` with the map inside it, four normal-flow scene triggers with `data-map-scene="country|sido|sigungu|dong"` and stable IDs, and a skip button `id="entry-skip-dong"` labeled `동네까지 보기`. The final scene keeps equal-weight `내게 맞는 주거 찾기` and `지도에서 실거래 찾기` route buttons. Do not add Task 4 location UI; provide only these stable IDs/data attributes. `site/entry.css` must remove the `entry-main` overflow/absolute-map conflict: the stage uses `position: sticky; top: 0; min-height: 100svh`, the map fills that stage without absolute positioning, and scene triggers remain in normal document flow. Add `prefers-reduced-motion: reduce` rules for camera-related decoration.
 
 - [ ] **Step 5: Verify and commit**
 
 Run separately:
 
 ```text
-npx vitest run test/entry-scroll.test.js test/frontend.test.ts
+npx vitest run test/entry-experience.test.js test/frontend.test.ts
 npm run check:frontend
 git diff --check
 ```
@@ -811,7 +829,7 @@ git diff --check
 Expected: all exit `0`.
 
 ```bash
-git add site/entry-scroll.js site/index.html site/entry.css test/entry-scroll.test.js test/frontend.test.ts
+git add site/entry-experience.js site/index.html site/entry.css test/entry-experience.test.js test/frontend.test.ts
 git commit -m "feat: add scroll-driven map scenes"
 ```
 
