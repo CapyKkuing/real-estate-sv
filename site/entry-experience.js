@@ -111,6 +111,7 @@ export function initEntryExperience({
     let profile = loadHousingProfile(window.localStorage);
     let lastTrigger = null;
     let selectedRegion = SEOUL_START_REGION;
+    let keyboardActivation = false;
 
     function focusMode(mode) {
         if (mode === ENTRY_MODE.HOUSING) {
@@ -285,21 +286,22 @@ export function initEntryExperience({
         });
     });
     elements.closeQuestion.addEventListener('click', closeHousing);
-    function markQuestionFocusOrigin(event) {
-        if (event.detail > 0) {
-            elements.questionTitle.dataset.focusOrigin = 'pointer';
-        } else {
+    function markQuestionFocusOrigin() {
+        if (keyboardActivation) {
             delete elements.questionTitle.dataset.focusOrigin;
+        } else {
+            elements.questionTitle.dataset.focusOrigin = 'pointer';
         }
+        keyboardActivation = false;
     }
-    elements.previousQuestion.addEventListener('click', event => {
-        markQuestionFocusOrigin(event);
+    elements.previousQuestion.addEventListener('click', () => {
+        markQuestionFocusOrigin();
         questionIndex = previousQuestionIndex(questionIndex);
         renderQuestion();
     });
-    elements.nextQuestion.addEventListener('click', event => {
-        markQuestionFocusOrigin(event);
+    elements.nextQuestion.addEventListener('click', () => {
         if (!profile.answers[HOUSING_QUESTIONS[questionIndex].id]) return;
+        markQuestionFocusOrigin();
         if (questionIndex === HOUSING_QUESTIONS.length - 1) {
             closeHousing();
             return;
@@ -309,6 +311,8 @@ export function initEntryExperience({
     });
     elements.questionDialog.addEventListener('keydown', event => {
         delete elements.questionTitle.dataset.focusOrigin;
+        keyboardActivation = (event.key === 'Enter' || event.key === ' ') &&
+            (!event.target || event.target === elements.previousQuestion || event.target === elements.nextQuestion);
         if (event.key === 'Escape') closeHousing();
     });
     document.getElementById('entry-back')?.addEventListener('click', () => setMode(ENTRY_MODE.HOME));
