@@ -107,6 +107,10 @@ describe("Cloudflare frontend", () => {
     expect(html).toContain('aria-modal="false"')
     expect(html).toContain('aria-live="polite"')
     expect(entryStyle).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))")
+    expect(entryStyle).toMatch(/\.housing-question\s*\{[\s\S]*left:\s*50%[\s\S]*translate\(-50%,\s*-50%\)/)
+    expect(entryStyle).toMatch(/\.housing-question-title:focus-visible[\s\S]*outline:\s*3px/)
+    expect(entryStyle).not.toMatch(/\.housing-question-title:focus(?!-visible)/)
+    expect(entryStyle).toMatch(/@media \(max-width: 720px\)[\s\S]*bottom:\s*0/)
     const routeButtonStyle = entryStyle.match(/\.entry-route button \{([^}]*)\}/)?.[1] ?? ""
     expect(routeButtonStyle).toContain("width: 100%")
     expect(routeButtonStyle).toContain("justify-content: space-between")

@@ -424,6 +424,26 @@ describe('entry experience controller', () => {
         expect(JSON.stringify(readStoredProfile(harness))).not.toContain('37.55');
     });
 
+    it('keeps the question title focused after pointer navigation advances a question', async () => {
+        const harness = createControllerHarness();
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => ({ latitude: 37.55, longitude: 126.91 })),
+            resize: vi.fn(),
+            setCamera: vi.fn(),
+            resolveRegion: vi.fn().mockResolvedValue({ label: '마포구' }),
+        };
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        initEntryExperience({ ...harness, mapController });
+
+        await harness.housingTrigger.click();
+        harness.elements['housing-question-title'].focus.mockClear();
+        await harness.elements['housing-question-body'].children[0].click();
+        await harness.elements['housing-question-next'].click();
+
+        expect(harness.elements['housing-question-title'].focus).toHaveBeenLastCalledWith({ preventScroll: true });
+    });
+
     it('hides scroll scenes and skip controls outside home mode', () => {
         const harness = createControllerHarness();
         vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });

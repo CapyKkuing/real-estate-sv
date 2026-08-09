@@ -104,8 +104,7 @@
     text-wrap: balance;
 }
 
-.entry-copy h1:focus,
-.housing-question h2:focus {
+.entry-copy h1:focus {
     outline: 3px solid #9c3e36;
     outline-offset: 4px;
 }
@@ -213,12 +212,12 @@
 }
 
 .housing-question {
-    position: absolute;
+    position: fixed;
     z-index: 4;
     top: 50%;
-    right: max(32px, calc((100vw - 1320px) / 2));
-    width: min(420px, calc(100% - 48px));
-    max-height: calc(100svh - 140px);
+    left: 50%;
+    width: min(520px, calc(100% - 48px));
+    max-height: calc(100svh - 96px);
     overflow: auto;
     padding: 32px;
     border: 1px solid rgba(23, 49, 60, .16);
@@ -226,7 +225,7 @@
     background: rgba(255, 255, 255, .96);
     box-shadow: 0 26px 70px rgba(23, 49, 60, .22);
     color: #17313c;
-    transform: translateY(-50%);
+    transform: translate(-50%, -50%);
 }
 
 .housing-question-close {
@@ -249,6 +248,11 @@
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .08em;
+}
+
+.housing-question-title:focus-visible {
+    outline: 3px solid #0b6f63;
+    outline-offset: 6px;
 }
 
 .housing-question h2 {
