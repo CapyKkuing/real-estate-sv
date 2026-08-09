@@ -1,6 +1,7 @@
 import { ENTRY_MODE, readEntryMode, writeEntryMode } from './entry-route.js';
 import { createEntryMap } from './entry-map.js';
 import { createEntryScroll } from './entry-scroll.js';
+import { resolveStartRegion } from './location-region.js';
 import { loadMapProvider } from './map-loader.js';
 import {
     HOUSING_QUESTIONS,
@@ -49,7 +50,15 @@ export function previousQuestionIndex(index) {
     return Math.max(index - 1, 0);
 }
 
-export function initEntryExperience({ document, window, loadProvider = loadMapProvider, createScroll = createEntryScroll }) {
+export function initEntryExperience({
+    document,
+    window,
+    geolocation = window?.navigator?.geolocation,
+    loadProvider = loadMapProvider,
+    createScroll = createEntryScroll,
+    mapController: suppliedMapController,
+    entryScroll: suppliedEntryScroll,
+}) {
     const elements = {
         skipLink: document.querySelector('.skip-link'),
         entryView: document.getElementById('entry-view'),
@@ -58,6 +67,9 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
         mainContent: document.getElementById('main-content'),
         map: document.getElementById('entry-map'),
         mapStatus: document.getElementById('entry-map-status'),
+        useLocation: document.getElementById('entry-use-location'),
+        locationStatus: document.getElementById('entry-location-status'),
+        changeRegion: document.getElementById('entry-change-region'),
         scenes: document.getElementById('entry-scenes'),
         skipDong: document.getElementById('entry-skip-dong'),
         homeOverlay: document.getElementById('entry-home-overlay'),
@@ -69,7 +81,7 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
         previousQuestion: document.getElementById('housing-question-previous'),
         nextQuestion: document.getElementById('housing-question-next'),
     };
-    const mapController = createEntryMap({
+    const mapController = suppliedMapController ?? createEntryMap({
         container: elements.map,
         maplibre: window.maplibregl,
         loadProvider: () => loadProvider({ document, window }),
@@ -82,7 +94,7 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
                     : '지도를 불러오지 못했습니다. 아래 경로 선택은 계속 사용할 수 있습니다.';
         },
     });
-    const entryScroll = createScroll({
+    const entryScroll = suppliedEntryScroll ?? createScroll({
         sceneElements: document.querySelectorAll('[data-map-scene]'),
         mapController,
         observerFactory: typeof window.IntersectionObserver === 'function'
@@ -133,9 +145,14 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
             const currentArea = document.createElement('button');
             currentArea.type = 'button';
             currentArea.textContent = '현재 지도 주변';
-            currentArea.addEventListener('click', () => {
+            currentArea.addEventListener('click', async () => {
                 const center = mapController.getCenter();
-                if (center) recordAnswer(step.question.id, `map:${center.longitude},${center.latitude}`);
+                if (!center) return;
+                try {
+                    const region = await mapController.resolveRegion(center);
+                    const label = region.label || region.dongName;
+                    if (label) recordAnswer(step.question.id, `text:${label}`);
+                } catch {}
             });
 
             const regionSelect = document.createElement('select');
@@ -265,6 +282,24 @@ export function initEntryExperience({ document, window, loadProvider = loadMapPr
         if (event.key === 'Escape') closeHousing();
     });
     document.getElementById('entry-back')?.addEventListener('click', () => setMode(ENTRY_MODE.HOME));
+    elements.useLocation?.addEventListener('click', async () => {
+        elements.useLocation.disabled = true;
+        try {
+            const result = await resolveStartRegion({ geolocation, mapController });
+            entryScroll.setCenter(result.center);
+            const privacy = '좌표는 지역 변환을 위해 카카오에 전송되며 이 서비스에는 저장되지 않습니다.';
+            if (result.source === 'current') {
+                elements.locationStatus.textContent = `${result.label || result.dongName}에서 시작합니다. ${privacy}`;
+                elements.changeRegion.hidden = true;
+            } else {
+                elements.locationStatus.textContent = `현재 위치를 확인하지 못해 서울에서 시작합니다. ${privacy}`;
+                elements.changeRegion.hidden = false;
+            }
+        } finally {
+            elements.useLocation.disabled = false;
+        }
+    });
+    elements.changeRegion?.addEventListener('click', () => setMode(ENTRY_MODE.MAP));
     elements.skipDong?.addEventListener('click', () => entryScroll.skip());
     window.addEventListener('popstate', () => setMode(readEntryMode(window.location.hash), false));
     setMode(readEntryMode(window.location.hash), false);

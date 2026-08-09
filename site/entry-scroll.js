@@ -16,16 +16,18 @@ export function getScene(id) {
 
 export function createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion, onSceneChange }) {
     let activeId = null;
+    let center = SEOUL_CENTER;
     let observer = null;
     const elements = [...(sceneElements ?? [])];
 
-    function applyScene(id) {
+    function applyScene(id, force = false) {
         const scene = getScene(id);
-        if (!scene || activeId === id) return;
+        if (!scene || (!force && activeId === id)) return;
 
         activeId = id;
-        mapController.setCamera({ ...scene.camera, animate: !reducedMotion });
-        onSceneChange?.(scene);
+        const currentScene = { ...scene, camera: { ...scene.camera, center } };
+        mapController.setCamera({ ...currentScene.camera, animate: !reducedMotion });
+        onSceneChange?.(currentScene);
     }
 
     if (observerFactory) {
@@ -40,6 +42,10 @@ export function createEntryScroll({ sceneElements, mapController, observerFactor
     }
 
     return {
+        setCenter(nextCenter) {
+            center = nextCenter;
+            applyScene(activeId ?? elements[0]?.dataset.mapScene, true);
+        },
         skip() {
             const dongElement = elements.find(element => element.dataset.mapScene === 'dong');
             dongElement?.scrollIntoView?.({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });

@@ -59,6 +59,19 @@ describe('entry scroll scenes', () => {
         scroll.destroy();
     });
 
+    it('retargets the active and subsequent scroll scenes after location resolves', () => {
+        const { observer, observerFactory, sceneElements } = createHarness();
+        const mapController = { setCamera: vi.fn(), setInteractive: vi.fn() };
+        const scroll = createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion: false });
+        const center = { longitude: 126.91, latitude: 37.55 };
+
+        scroll.setCenter(center);
+        expect(mapController.setCamera).toHaveBeenLastCalledWith({ center, level: 13, animate: true });
+        observer.enter('sido');
+        expect(mapController.setCamera).toHaveBeenLastCalledWith({ center, level: 11, animate: true });
+        scroll.destroy();
+    });
+
     it('applies only the first scene when IntersectionObserver is unavailable', () => {
         const { sceneElements } = createHarness();
         const mapController = { setCamera: vi.fn(), setInteractive: vi.fn() };
