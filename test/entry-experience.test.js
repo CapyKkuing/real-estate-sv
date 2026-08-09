@@ -451,6 +451,24 @@ describe('entry experience controller', () => {
         expect(harness.elements['housing-question-title'].dataset.focusOrigin).toBeUndefined();
     });
 
+    it.each([
+        ['home pointer', 'housingTrigger', null, 'pointer'],
+        ['platform pointer', 'platformHousingTrigger', null, 'pointer'],
+        ['home keyboard', 'housingTrigger', 'Enter', undefined],
+        ['platform keyboard', 'platformHousingTrigger', ' ', undefined],
+    ])('classifies %s housing entry focus origin', async (_label, triggerKey, key, expectedOrigin) => {
+        const harness = createControllerHarness();
+        vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });
+        const experience = initEntryExperience(harness);
+        const trigger = harness[triggerKey];
+        if (triggerKey === 'platformHousingTrigger') experience.setMode('map');
+        if (key) await trigger.dispatch('keydown', { key, target: trigger });
+        await trigger.click();
+
+        expect(harness.elements['housing-question-title'].dataset.focusOrigin).toBe(expectedOrigin);
+        expect(harness.elements['housing-question-title'].focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
     it('hides scroll scenes and skip controls outside home mode', () => {
         const harness = createControllerHarness();
         vi.stubGlobal('Option', function Option(textContent, value) { return { textContent, value }; });

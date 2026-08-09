@@ -268,13 +268,25 @@ export function initEntryExperience({
     }
 
     document.querySelectorAll('[data-entry-route="housing"]').forEach(button => {
-        button.addEventListener('click', () => openHousing(button));
+        button.addEventListener('keydown', event => {
+            keyboardActivation = event.key === 'Enter' || event.key === ' ';
+        });
+        button.addEventListener('click', () => {
+            markQuestionFocusOrigin();
+            openHousing(button);
+        });
     });
     document.querySelectorAll('[data-entry-route="map"]').forEach(button => {
         button.addEventListener('click', openTransaction);
     });
     document.querySelectorAll('[data-platform-mode="housing"]').forEach(button => {
-        button.addEventListener('click', () => openHousing(button));
+        button.addEventListener('keydown', event => {
+            keyboardActivation = event.key === 'Enter' || event.key === ' ';
+        });
+        button.addEventListener('click', () => {
+            markQuestionFocusOrigin();
+            openHousing(button);
+        });
     });
     document.querySelectorAll('[data-platform-mode="map"]').forEach(button => {
         button.addEventListener('click', openTransaction);
