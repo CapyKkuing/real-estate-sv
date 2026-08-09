@@ -64,6 +64,7 @@ export function initEntryExperience({
         summaryTransaction: document.getElementById('housing-summary-transaction'),
         mapConditionToggle: document.getElementById('map-condition-toggle'),
         mapConditionPanel: document.getElementById('map-condition-panel'),
+        fetchLive: document.getElementById('fetch-live-btn'),
     };
     const mapController = suppliedMapController ?? createEntryMap({
         container: elements.map,
@@ -414,6 +415,9 @@ export function initEntryExperience({
     elements.summaryTransaction?.addEventListener('click', openTransaction);
     elements.mapConditionToggle?.addEventListener('click', () => {
         setMapConditionPanel(elements.mapConditionPanel.hidden);
+    });
+    elements.fetchLive?.addEventListener?.('click', () => {
+        if (document.body.dataset.entryMode === ENTRY_MODE.MAP) setMapConditionPanel(false);
     });
     window.addEventListener('popstate', () => setMode(readEntryMode(window.location.hash), false));
     setMode(readEntryMode(window.location.hash), false);

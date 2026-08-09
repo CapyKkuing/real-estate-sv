@@ -120,6 +120,7 @@ function createControllerHarness() {
         'main-content',
         'map-condition-toggle',
         'map-condition-panel',
+        'fetch-live-btn',
         'sido-select',
     ];
     const elements = Object.fromEntries(ids.map(id => [id, new FakeElement()]));
@@ -639,6 +640,11 @@ describe('entry experience controller', () => {
 
         expect(harness.elements['map-condition-toggle']['aria-expanded']).toBe('true');
         expect(harness.elements['map-condition-panel'].hidden).toBe(false);
+
+        await harness.elements['fetch-live-btn'].click();
+
+        expect(harness.elements['map-condition-toggle']['aria-expanded']).toBe('false');
+        expect(harness.elements['map-condition-panel'].hidden).toBe(true);
     });
 
     it('uses selected direct and city-region answers for the transaction callback', async () => {
