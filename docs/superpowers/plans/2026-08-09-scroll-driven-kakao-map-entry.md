@@ -851,8 +851,10 @@ git commit -m "feat: add scroll-driven map scenes"
 - Create: `site/location-region.js`
 - Create: `test/location-region.test.js`
 - Modify: `site/entry-experience.js`
+- Modify: `site/entry-scroll.js`
 - Modify: `site/index.html`
 - Modify: `test/entry-experience.test.js`
+- Modify: `test/entry-scroll.test.js`
 
 **Interfaces:**
 
@@ -867,37 +869,60 @@ git commit -m "feat: add scroll-driven map scenes"
 }
 ```
 
+- `createEntryScroll(...)` returns `setCenter(center)`, which updates the internal center for every scene, immediately reapplies the active scene with the new center, and uses the new center for subsequent scene changes. The initial and fallback center is always the exported `SEOUL_CENTER`.
+
 - [ ] **Step 1: Write failing success and fallback tests**
 
 ```js
-it('requests location only after start and stores no coordinates', async () => {
+it('does not request location until the explicit start action', async () => {
   const geolocation = createGeolocationSuccess({ latitude: 37.55, longitude: 126.91 })
-  const storage = createStorageSpy()
-  const result = await resolveStartRegion({ geolocation, mapController, storage, timeoutMs: 1000 })
+  const experience = initEntryExperience({ document, geolocation, mapController, entryScroll })
+  expect(geolocation.getCurrentPosition).not.toHaveBeenCalled()
+  await document.querySelector('#entry-use-location').click()
 
-  expect(result.source).toBe('current')
-  expect(result.lawdCd).toBe('11440')
-  expect(storage.setItem).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('37.55'))
+  expect(geolocation.getCurrentPosition).toHaveBeenCalledOnce()
+  experience.destroy()
+})
+
+it('normalizes a missing region label from dongName', async () => {
+  const result = await resolveStartRegion({ geolocation, mapController: {
+    resolveRegion: vi.fn().mockResolvedValue({ sidoCode: '11', lawdCd: '11440', dongName: '망원동' }),
+  } })
+
+  expect(result.label).toBe('망원동')
+})
+
+it('retargets the active and subsequent scroll scenes after location resolves', () => {
+  const mapController = { setCamera: vi.fn(), setInteractive: vi.fn() }
+  const scroll = createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion: false })
+  const center = { longitude: 126.91, latitude: 37.55 }
+
+  scroll.setCenter(center)
+  expect(mapController.setCamera).toHaveBeenLastCalledWith({ center, level: 13, animate: true })
+  observer.enter('sido')
+  expect(mapController.setCamera).toHaveBeenLastCalledWith({ center, level: 11, animate: true })
 })
 
 it.each(['denied', 'timeout', 'unsupported', 'resolve-failed'])('%s starts in Seoul without an arbitrary district', async reason => {
   const result = await resolveFallbackCase(reason)
-  expect(result).toMatchObject({ source: 'seoul', sidoCode: '11', lawdCd: null, dongName: '', label: '서울특별시' })
+  expect(result).toMatchObject({ source: 'seoul', center: SEOUL_CENTER, sidoCode: '11', lawdCd: null, dongName: '', label: '서울특별시' })
 })
 ```
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `npx vitest run test/location-region.test.js`
+Run: `npx vitest run test/location-region.test.js test/entry-scroll.test.js test/entry-experience.test.js`
 
-Expected: FAIL because `site/location-region.js` does not exist.
+Expected: FAIL because location start wiring, center retargeting, and the UI contract do not exist.
 
 - [ ] **Step 3: Implement explicit permission flow**
 
 ```js
+import { SEOUL_CENTER } from './entry-scroll.js';
+
 export const SEOUL_START_REGION = Object.freeze({
     source: 'seoul',
-    center: { longitude: 126.978, latitude: 37.5665 },
+    center: SEOUL_CENTER,
     sidoCode: '11',
     lawdCd: null,
     dongName: '',
@@ -909,25 +934,27 @@ export async function resolveStartRegion({ geolocation, mapController, timeoutMs
     try {
         const center = await getCurrentPositionOnce(geolocation, timeoutMs);
         const region = await mapController.resolveRegion(center);
-        return { source: 'current', center, ...region };
+        return { source: 'current', center, ...region, label: region.label || region.dongName };
     } catch {
         return SEOUL_START_REGION;
     }
 }
 ```
 
-Do not pass `storage` or `fetch` into production location resolution. Exact coordinates remain only in the returned in-memory object. The UI must disclose that coordinates go to Kakao for region conversion and are not saved by this service.
+Do not pass `storage` or `fetch` into production location resolution. Exact coordinates remain only in the returned in-memory object. The existing housing question must never write a `map:longitude,latitude` string to `localStorage`; persist only a non-coordinate string derived from the `label` or `dongName` returned by `mapController.resolveRegion`. The UI must disclose that coordinates go to Kakao for region conversion and are not saved by this service.
 
 - [ ] **Step 4: Wire only the `내 주변에서 시작` button**
 
-Page load and first scroll must not call `navigator.geolocation`. The button disables while resolving, announces success or `현재 위치를 확인하지 못해 서울에서 시작합니다`, and exposes `지역 변경` after fallback.
+`site/index.html` must expose `#entry-use-location`, `#entry-location-status` (`aria-live="polite"`), and `#entry-change-region` with stable labels. Only `#entry-use-location` may call `navigator.geolocation`; page load, the first scroll, and `지역 변경` must not. The button disables while resolving, and `#entry-location-status` announces success or `현재 위치를 확인하지 못해 서울에서 시작합니다` plus the privacy guidance that coordinates are sent to Kakao for conversion and not saved. On both success and failure, call `entryScroll.setCenter(result.center)`; after fallback, show `#entry-change-region`, whose action opens the existing 실거래 지도 manual region-selection screen.
+
+Add a regression assertion that completing the existing housing region question persists a non-coordinate `text:${label || dongName}` answer and never a `map:longitude,latitude` value.
 
 - [ ] **Step 5: Verify and commit**
 
 Run separately:
 
 ```text
-npx vitest run test/location-region.test.js test/entry-experience.test.js
+npx vitest run test/location-region.test.js test/entry-scroll.test.js test/entry-experience.test.js
 npm run check:frontend
 git diff --check
 ```
@@ -935,7 +962,7 @@ git diff --check
 Expected: all exit `0`.
 
 ```bash
-git add site/location-region.js site/entry-experience.js site/index.html test/location-region.test.js test/entry-experience.test.js
+git add site/location-region.js site/entry-scroll.js site/entry-experience.js site/index.html test/location-region.test.js test/entry-scroll.test.js test/entry-experience.test.js
 git commit -m "feat: add privacy-safe location start"
 ```
 
