@@ -243,7 +243,9 @@ export function initEntryExperience({
         selectedRegion = region;
         const storedRegion = toStoredPreferredRegion(region);
         profile = answerHousingQuestion(profile, 'preferredRegion', storedRegion);
-        onRegionChange(storedRegion);
+        try {
+            onRegionChange(storedRegion);
+        } catch {}
     }
 
     function openTransaction() {

@@ -376,6 +376,29 @@ describe('entry experience controller', () => {
         expect(geolocation.getCurrentPosition).toHaveBeenCalledOnce();
     });
 
+    it('continues the Seoul fallback UI when region persistence throws', async () => {
+        const harness = createControllerHarness();
+        const geolocation = {
+            getCurrentPosition: vi.fn((_success, failure) => failure(new Error('denied'))),
+        };
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => SEOUL_CENTER),
+            resize: vi.fn(),
+            resolveRegion: vi.fn(),
+        };
+        const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        const onRegionChange = vi.fn(() => { throw new Error('storage unavailable'); });
+        initEntryExperience({ ...harness, geolocation, mapController, entryScroll, onRegionChange });
+
+        await expect(harness.elements['entry-use-location'].click()).resolves.toEqual([undefined]);
+
+        expect(entryScroll.setCenter).toHaveBeenCalledWith(SEOUL_CENTER);
+        expect(harness.elements['entry-location-status'].textContent).toContain('현재 위치를 확인하지 못해 서울에서 시작합니다');
+        expect(harness.elements['entry-change-region'].hidden).toBe(false);
+        expect(harness.elements['entry-use-location'].disabled).toBe(false);
+    });
+
     it('stores the resolved housing region label without coordinates', async () => {
         const harness = createControllerHarness();
         const center = { latitude: 37.55, longitude: 126.91 };
