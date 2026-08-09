@@ -125,7 +125,7 @@ function createPanelDocument() {
     count.id = 'transaction-map-count';
     const filters = document.createElement('div');
     filters.id = 'transaction-map-filters';
-    const list = document.createElement('div');
+    const list = document.createElement('ul');
     list.id = 'transaction-map-list';
     panel.append(toggle, region, count, filters, list);
     document.root.append(panel);
@@ -288,8 +288,24 @@ describe('transaction map bridge', () => {
 
         expect(document.getElementById('transaction-map-count').textContent).toContain('1건');
         expect(document.querySelectorAll('[data-transaction-index]')).toHaveLength(1);
+        expect(document.getElementById('transaction-map-list').children[0].tagName).toBe('li');
         document.querySelector('[data-transaction-index="4"]').click();
         expect(onSelect).toHaveBeenCalledWith(4);
+    });
+
+    it('mirrors jeonse and monthly rent controls with Korean labels', () => {
+        const document = createPanelDocument();
+        const controller = createTransactionMapPanel(document);
+
+        controller.update({
+            state: 'success',
+            query: { regionLabel: '서울 마포구', selectedModes: ['jeonse', 'monthly'], dealYmd: '202608' },
+            items: [],
+            total: 0,
+            onSelect: vi.fn(),
+        });
+
+        expect(document.getElementById('transaction-map-filters').textContent).toContain('전세, 월세');
     });
 
     it('replaces stale visible items with an error state', () => {

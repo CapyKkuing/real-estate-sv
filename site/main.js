@@ -436,10 +436,12 @@ function initDateOptions() {
 // ===================================================================
 function markQueryDirty() {
     if (globalData.length) setQueryStatus('조회 조건이 바뀌었습니다. 다시 분석해 주세요.');
+    transactionMapState = 'loading';
+    publishTransactionMap({ state: 'loading', items: [], total: 0 });
     comparisonController.setCurrentAvailable(false);
 }
 
-function resetDongOptions(message = '읍/면/동 선택') {
+function resetDongOptions(message = '읍/면/동 선택', publishPanel = true) {
     dongSelect.innerHTML = `<option value="">${message}</option>`;
     dongSelect.disabled = true;
     preparedData = [];
@@ -448,6 +450,10 @@ function resetDongOptions(message = '읍/면/동 선택') {
     isPreparingDongs = false;
     dongRequestId += 1;
     syncFetchButton();
+    if (publishPanel) {
+        transactionMapState = 'loading';
+        publishTransactionMap({ state: 'loading', items: [], total: 0 });
+    }
 }
 
 sidoSelect.addEventListener('change', () => {
@@ -791,6 +797,8 @@ async function prepareDongOptions() {
             ? '부동산 유형 선택 후 조회'
             : '시/군/구 선택 후 조회';
         resetDongOptions(message);
+        transactionMapState = 'error';
+        publishTransactionMap({ state: 'error', items: [], total: 0 });
         return null;
     }
 
@@ -808,6 +816,8 @@ async function prepareDongOptions() {
     isPreparingDongs = false;
     if (data === null) {
         resetDongOptions('읍/면/동 조회 실패');
+        transactionMapState = 'error';
+        publishTransactionMap({ state: 'error', items: [], total: 0 });
         return null;
     }
 
@@ -1461,7 +1471,7 @@ const comparisonController = initComparison(() => {
 initDateOptions();
 gugunSelect.disabled = true;
 dateSelect.disabled = true;
-resetDongOptions('시/군/구 선택 후 조회');
+resetDongOptions('시/군/구 선택 후 조회', false);
 initTheme();
 renderMetrics([]);
 renderTrend([]);

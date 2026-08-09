@@ -127,7 +127,9 @@ export function createTransactionMapPanel(document) {
             count.textContent = getPanelStateText(state, total);
 
             filters.replaceChildren();
-            appendPanelField(document, filters, '거래', formatPanelList(query.transactionTypes || query.selectedModes, { trade: '매매', rent: '전월세', sale: '매매' }));
+            appendPanelField(document, filters, '거래', formatPanelList(query.transactionTypes || query.selectedModes, {
+                trade: '매매', rent: '전월세', sale: '매매', jeonse: '전세', monthly: '월세',
+            }));
             appendPanelField(document, filters, '유형', formatPanelList(query.propertyTypes || query.selectedTypes, {
                 apt: '아파트', rhous: '연립·다세대', shous: '단독·다가구', office: '오피스텔',
                 comm: '상업·업무', fact: '공장·창고', land: '토지', right: '분양·입주권',
@@ -136,7 +138,7 @@ export function createTransactionMapPanel(document) {
 
             list.replaceChildren();
             if (!items.length) {
-                const empty = document.createElement('p');
+                const empty = document.createElement('li');
                 empty.className = 'transaction-map-list-status';
                 empty.textContent = getPanelStateText(state, total);
                 list.append(empty);
@@ -144,13 +146,16 @@ export function createTransactionMapPanel(document) {
             }
 
             items.forEach(({ item, dataIndex }) => {
+                const listItem = document.createElement('li');
+                listItem.className = 'transaction-map-list-item';
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'transaction-map-item';
                 button.setAttribute('data-transaction-index', String(dataIndex));
                 button.textContent = getPanelItemText(item || {});
                 button.addEventListener('click', () => snapshot.onSelect?.(dataIndex));
-                list.append(button);
+                listItem.append(button);
+                list.append(listItem);
             });
         },
     };

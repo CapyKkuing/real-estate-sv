@@ -163,11 +163,21 @@ describe("Cloudflare frontend", () => {
     for (const id of ["transaction-map-panel", "transaction-map-sheet-toggle", "transaction-map-region", "transaction-map-count", "transaction-map-filters", "transaction-map-list"]) {
       expect(html).toContain(`id="${id}"`)
     }
+    expect(html).toContain('<ul id="transaction-map-list"')
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('aria-live="polite"')
     expect(style).toMatch(/\.entry-map-stage\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(320px,\s*380px\)/)
     expect(style).toMatch(/@media \(max-width:\s*720px\)[\s\S]*\.transaction-map-panel\s*\{[\s\S]*position:\s*fixed[\s\S]*bottom:\s*0/)
     expect(style).toMatch(/\.transaction-map-panel\.is-collapsed[\s\S]*\.transaction-map-filters[\s\S]*display:\s*none/)
+  })
+
+  it("clears the transaction panel when query controls change or active preparation fails", async () => {
+    const script = await readFile(resolve("site/main.js"), "utf8")
+    const dirty = script.match(/function markQueryDirty\(\) \{([\s\S]*?)\n\}/)?.[1] ?? ""
+
+    expect(dirty).toContain("publishTransactionMap({ state: 'loading', items: [], total: 0 })")
+    expect(script).toMatch(/function resetDongOptions\([\s\S]*?publishTransactionMap\(\{ state: 'loading', items: \[\], total: 0 \}\)/)
+    expect(script).toMatch(/if \(data === null\) \{[\s\S]*?publishTransactionMap\(\{ state: 'error', items: \[\], total: 0 \}\)/)
   })
 
   it("keeps the housing question dialog outside the hidden scene container", async () => {
