@@ -285,11 +285,20 @@ export function initEntryExperience({
         });
     });
     elements.closeQuestion.addEventListener('click', closeHousing);
-    elements.previousQuestion.addEventListener('click', () => {
+    function markQuestionFocusOrigin(event) {
+        if (event.detail > 0) {
+            elements.questionTitle.dataset.focusOrigin = 'pointer';
+        } else {
+            delete elements.questionTitle.dataset.focusOrigin;
+        }
+    }
+    elements.previousQuestion.addEventListener('click', event => {
+        markQuestionFocusOrigin(event);
         questionIndex = previousQuestionIndex(questionIndex);
         renderQuestion();
     });
-    elements.nextQuestion.addEventListener('click', () => {
+    elements.nextQuestion.addEventListener('click', event => {
+        markQuestionFocusOrigin(event);
         if (!profile.answers[HOUSING_QUESTIONS[questionIndex].id]) return;
         if (questionIndex === HOUSING_QUESTIONS.length - 1) {
             closeHousing();
@@ -297,11 +306,6 @@ export function initEntryExperience({
         }
         questionIndex = nextQuestionIndex(questionIndex, HOUSING_QUESTIONS.length);
         renderQuestion();
-    });
-    ['pointerdown', 'touchstart'].forEach(eventType => {
-        elements.questionDialog.addEventListener(eventType, () => {
-            elements.questionTitle.dataset.focusOrigin = 'pointer';
-        });
     });
     elements.questionDialog.addEventListener('keydown', event => {
         delete elements.questionTitle.dataset.focusOrigin;
