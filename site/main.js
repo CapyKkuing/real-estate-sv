@@ -7,6 +7,11 @@ import { listPeriodMonths, selectHistoryMonths } from './history-period.js';
 import { formatRentPrice, mapRentTransaction, RENT_SUPPORTED_TYPES } from './rent-transactions.js';
 import { initEntryExperience } from './entry-experience.js';
 import {
+    applyEntryRegion,
+    getCurrentTransactionPage as selectCurrentTransactionPage,
+    publishTransactionMap as publishTransactionMapSnapshot,
+} from './transaction-map.js';
+import {
     answerHousingQuestion,
     loadHousingProfile,
     saveHousingProfile,
@@ -927,6 +932,7 @@ function renderTable() {
         renderMetrics([]);
         renderTrend([]);
         syncColumnVisibility();
+        publishTransactionMap();
         return;
     }
 
@@ -973,6 +979,7 @@ function renderTable() {
     prevPageBtn.disabled = currentPage === 1;
     nextPageBtn.disabled = currentPage === totalPages;
     syncColumnVisibility();
+    publishTransactionMap();
 }
 
 async function loadDetailPnu(item) {
@@ -1320,7 +1327,7 @@ window.loadHistoryItem = async function (sidoCd, lawdCd, dealYmd, dong, typesStr
     if (!dong || [...dongSelect.options].some(option => option.value === dong)) {
         dongSelect.value = dong;
         syncFetchButton();
-        fetchBtn.click();
+        await runAnalysis();
     } else {
         setQueryStatus('저장된 읍·면·동을 현재 조건에서 찾을 수 없습니다.', 'error');
     }
@@ -1334,7 +1341,7 @@ clearHistoryBtn.addEventListener('click', () => {
 // ===================================================================
 // 10. 조회 버튼 이벤트 (멀티 필터 결과 렌더링)
 // ===================================================================
-fetchBtn.addEventListener('click', async () => {
+async function runAnalysis() {
     const query = getQuerySelection();
     if (!isAnalysisReady(query)) {
         setQueryStatus('시·도, 시·군·구, 기준 월을 순서대로 선택해 주세요.', 'error');
@@ -1382,10 +1389,13 @@ fetchBtn.addEventListener('click', async () => {
         setQueryStatus('읍·면·동 목록을 다시 불러온 뒤 분석해 주세요.', 'error');
         renderMetrics([]);
         renderTrend([]);
+        publishTransactionMap();
     }
 
     setFetchButton(false);
-});
+}
+
+fetchBtn.addEventListener('click', runAnalysis);
 
 async function loadComparisonRegulation(current) {
     const item = current.data.find(candidate => candidate.jibun && candidate.umdNm);
@@ -1453,8 +1463,52 @@ function persistEntryRegion(region) {
     );
 }
 
+function getCurrentTransactionPage() {
+    return selectCurrentTransactionPage({
+        globalData,
+        filteredData,
+        currentPage,
+        itemsPerPage,
+    });
+}
+
+function publishTransactionMap() {
+    const query = getQuerySelection();
+    publishTransactionMapSnapshot({
+        query: {
+            ...query,
+            labels: {
+                sido: sidoSelect.options[sidoSelect.selectedIndex]?.text || '',
+                gugun: gugunSelect.options[gugunSelect.selectedIndex]?.text || '',
+                dong: query.dong,
+                dealYmd: dateSelect.options[dateSelect.selectedIndex]?.text || query.dealYmd,
+            },
+        },
+        items: getCurrentTransactionPage(),
+        total: filteredData.length,
+        onSelect: openDetail,
+    });
+}
+
 function rememberTransactionRegion(region) {
     pendingTransactionRegion = toStoredPreferredRegion(region);
+    void consumePendingTransactionRegion();
+}
+
+async function consumePendingTransactionRegion() {
+    const region = pendingTransactionRegion;
+    pendingTransactionRegion = null;
+    if (!region) return;
+    await applyEntryRegion(region, {
+        controls: {
+            sido: sidoSelect,
+            gugun: gugunSelect,
+            dong: dongSelect,
+            date: dateSelect,
+        },
+        prepareDongOptions,
+        runAnalysis,
+    });
 }
 
 const entryExperience = initEntryExperience({

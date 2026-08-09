@@ -80,11 +80,12 @@ describe("Cloudflare frontend", () => {
   })
 
   it("provides an accessible map-first entry and housing question surface", async () => {
-    const [html, entryStyle, script, mainScript] = await Promise.all([
+    const [html, entryStyle, script, mainScript, transactionMapScript] = await Promise.all([
       readFile(resolve("site/index.html"), "utf8"),
       readFile(resolve("site/entry.css"), "utf8"),
       readFile(resolve("site/entry-experience.js"), "utf8"),
       readFile(resolve("site/main.js"), "utf8"),
+      readFile(resolve("site/transaction-map.js"), "utf8"),
     ])
 
     for (const id of [
@@ -132,6 +133,10 @@ describe("Cloudflare frontend", () => {
     const openTransaction = mainScript.match(/function rememberTransactionRegion\(region\) \{([\s\S]*?)\n\}/)?.[1] ?? ""
     expect(openTransaction).toContain("toStoredPreferredRegion")
     expect(openTransaction).not.toMatch(/fetch\(|fetchBtn\.click|dispatchEvent|sidoSelect\.value|gugunSelect\.value/)
+    expect(transactionMapScript).toContain("applyEntryRegion")
+    expect(transactionMapScript).toContain("subscribeTransactionMap")
+    expect(mainScript).toContain("runAnalysis")
+    expect(mainScript).toContain("consumePendingTransactionRegion")
   })
 
   it("provides four stable scroll-map scene triggers", async () => {
