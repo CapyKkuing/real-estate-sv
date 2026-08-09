@@ -102,6 +102,8 @@ export function initEntryExperience({
             : null,
         reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
     });
+    let destroyed = false;
+    let locationRequestId = 0;
     let questionIndex = 0;
     let profile = loadHousingProfile(window.localStorage);
     let lastTrigger = null;
@@ -283,9 +285,12 @@ export function initEntryExperience({
     });
     document.getElementById('entry-back')?.addEventListener('click', () => setMode(ENTRY_MODE.HOME));
     elements.useLocation?.addEventListener('click', async () => {
+        if (destroyed || elements.useLocation.disabled) return;
+        const requestId = ++locationRequestId;
         elements.useLocation.disabled = true;
         try {
             const result = await resolveStartRegion({ geolocation, mapController });
+            if (destroyed || requestId !== locationRequestId) return;
             entryScroll.setCenter(result.center);
             const privacy = '좌표는 지역 변환을 위해 카카오에 전송되며 이 서비스에는 저장되지 않습니다.';
             if (result.source === 'current') {
@@ -296,7 +301,9 @@ export function initEntryExperience({
                 elements.changeRegion.hidden = false;
             }
         } finally {
-            elements.useLocation.disabled = false;
+            if (!destroyed && requestId === locationRequestId) {
+                elements.useLocation.disabled = false;
+            }
         }
     });
     elements.changeRegion?.addEventListener('click', () => setMode(ENTRY_MODE.MAP));
@@ -307,6 +314,8 @@ export function initEntryExperience({
     return {
         setMode,
         destroy: () => {
+            destroyed = true;
+            locationRequestId += 1;
             entryScroll.destroy();
             mapController.destroy();
         },

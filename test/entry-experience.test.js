@@ -236,6 +236,36 @@ describe('entry experience controller', () => {
         experience.destroy();
     });
 
+    it('ignores a pending location completion after the experience is destroyed', async () => {
+        const harness = createControllerHarness();
+        const center = { latitude: 37.55, longitude: 126.91 };
+        let resolveLocation;
+        const geolocation = {
+            getCurrentPosition: vi.fn(success => { resolveLocation = success; }),
+        };
+        const mapController = {
+            destroy: vi.fn(),
+            getCenter: vi.fn(() => center),
+            resize: vi.fn(),
+            resolveRegion: vi.fn().mockResolvedValue({
+                sidoCode: '11', lawdCd: '11440', dongName: '망원동', label: '망원동',
+            }),
+        };
+        const entryScroll = { destroy: vi.fn(), setCenter: vi.fn(), skip: vi.fn() };
+        const experience = initEntryExperience({ ...harness, geolocation, mapController, entryScroll });
+        const request = harness.elements['entry-use-location'].click();
+
+        expect(harness.elements['entry-use-location'].disabled).toBe(true);
+        experience.destroy();
+        const statusBeforeCompletion = harness.elements['entry-location-status'].textContent;
+        resolveLocation({ coords: center });
+        await request;
+
+        expect(entryScroll.setCenter).not.toHaveBeenCalled();
+        expect(harness.elements['entry-location-status'].textContent).toBe(statusBeforeCompletion);
+        expect(harness.elements['entry-use-location'].disabled).toBe(true);
+    });
+
     it('falls back to Seoul and opens manual region selection without another location request', async () => {
         const harness = createControllerHarness();
         const geolocation = {
