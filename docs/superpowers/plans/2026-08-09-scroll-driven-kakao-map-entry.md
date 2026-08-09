@@ -732,6 +732,8 @@ git commit -m "feat: add Kakao map controller with fallback"
 
 **Files:**
 
+- Create: `site/entry-scroll.js`
+- Create: `test/entry-scroll.test.js`
 - Modify: `site/entry-experience.js`
 - Modify: `test/entry-experience.test.js`
 - Modify: `site/index.html`
@@ -742,13 +744,14 @@ git commit -m "feat: add Kakao map controller with fallback"
 
 - Consumes: four `[data-map-scene]` elements and the existing Task 2 map controller
 - Produces: `createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion, onSceneChange })`
-- `site/entry-experience.js` exports `SEOUL_CENTER` as `{ longitude: 126.978, latitude: 37.5665 }`, `ENTRY_SCENE_IDS`, `getEntryScenes()`, and `getScene(id)`.
+- `site/entry-scroll.js` exports `SEOUL_CENTER` as `{ longitude: 126.978, latitude: 37.5665 }`, `ENTRY_SCENE_IDS`, `getEntryScenes()`, `getScene(id)`, and `createEntryScroll`.
 - `getEntryScenes()` uses only `SEOUL_CENTER` (no location permission, region lookup, or `region` input) and maps `country → 13`, `sido → 11`, `sigungu → 8`, `dong → 6`; each scene exposes the camera as `{ center: SEOUL_CENTER, level }`.
 - `getScene(id)` returns the matching scene/camera mapping for transition code and returns `null` for an unknown id. `mapController.setCamera` is called with exactly `{ center: { longitude, latitude }, level, animate }`.
 - Runtime `reducedMotion` is supplied from `window.matchMedia('(prefers-reduced-motion: reduce)').matches`, while tests may inject it.
+- `site/entry-experience.js` imports `createEntryScroll` and owns only runtime initialization plus calling its `destroy()` during experience teardown.
 - Task 3 supplies only stable scene IDs/data attributes for Task 4; it does not add location UI or region calculation.
 
-- [ ] **Step 1: Write the failing pure scene tests**
+- [ ] **Step 1: Write the failing pure scene tests in `test/entry-scroll.test.js` and the init/destroy integration test in `test/entry-experience.test.js`**
 
 ```js
 expect(getEntryScenes()).toEqual([
@@ -795,13 +798,14 @@ it('scrolls to dong and applies its camera exactly once when skipped', () => {
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `npx vitest run test/entry-experience.test.js`
+Run: `npx vitest run test/entry-scroll.test.js test/entry-experience.test.js`
 
-Expected: FAIL because the new scene exports and `createEntryScroll` lifecycle wiring are not implemented.
+Expected: FAIL because `site/entry-scroll.js` and its `entry-experience.js` initialization/destroy wiring are not implemented.
 
 - [ ] **Step 3: Implement scene transitions without wheel hijacking**
 
 ```js
+// site/entry-scroll.js
 export const ENTRY_SCENE_IDS = Object.freeze(['country', 'sido', 'sigungu', 'dong']);
 
 export function createEntryScroll({ sceneElements, mapController, observerFactory, reducedMotion, onSceneChange }) {
@@ -810,7 +814,7 @@ export function createEntryScroll({ sceneElements, mapController, observerFactor
 }
 ```
 
-Reuse Task 2's map controller. Observe `sceneElements` with `IntersectionObserver`, ignore repeated entries for the active id, and call `setCamera({ center, level, animate: !reducedMotion })` only when the scene changes. If `IntersectionObserver` is unavailable, apply the first scene once and keep `destroy()` safe. `skip()` must call the explicit dong scene's `scrollIntoView()` and apply that camera exactly once; the subsequent observer entry must be deduplicated. Do not register `wheel` handlers and do not call `preventDefault()` on scroll. `entry-experience.js` must initialize this scroll controller and call `destroy()` from its existing experience teardown.
+Reuse Task 2's map controller. Observe `sceneElements` with `IntersectionObserver`, ignore repeated entries for the active id, and call `setCamera({ center, level, animate: !reducedMotion })` only when the scene changes. If `IntersectionObserver` is unavailable, apply the first scene once and keep `destroy()` safe. `skip()` must call the explicit dong scene's `scrollIntoView()` and apply that camera exactly once; the subsequent observer entry must be deduplicated. Do not register `wheel` handlers and do not call `preventDefault()` on scroll. `entry-experience.js` imports this module, initializes the controller with runtime `window.matchMedia('(prefers-reduced-motion: reduce)').matches`, and calls its `destroy()` from the existing experience teardown.
 
 - [ ] **Step 4: Add semantic scenes and sticky layout**
 
@@ -821,7 +825,7 @@ Reuse Task 2's map controller. Observe `sceneElements` with `IntersectionObserve
 Run separately:
 
 ```text
-npx vitest run test/entry-experience.test.js test/frontend.test.ts
+npx vitest run test/entry-scroll.test.js test/entry-experience.test.js test/frontend.test.ts
 npm run check:frontend
 git diff --check
 ```
