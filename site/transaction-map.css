@@ -140,6 +140,7 @@
 @media (max-width: 720px) {
     .entry-map-stage {
         display: block;
+        position: relative;
     }
 
     .transaction-map-panel {

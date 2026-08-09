@@ -308,6 +308,26 @@ describe('transaction map bridge', () => {
         expect(document.getElementById('transaction-map-filters').textContent).toContain('전세, 월세');
     });
 
+    it('collapses the mobile sheet through its native toggle', () => {
+        const document = createPanelDocument();
+        const controller = createTransactionMapPanel(document);
+        const panel = document.getElementById('transaction-map-panel');
+        const toggle = document.getElementById('transaction-map-sheet-toggle');
+
+        controller.update({
+            state: 'loading',
+            query: { regionLabel: '서울 마포구', selectedModes: ['sale'], dealYmd: '202608' },
+            items: [],
+            total: 0,
+            onSelect: vi.fn(),
+        });
+        toggle.click();
+
+        expect(panel.className).toContain('is-collapsed');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.textContent).toBe('결과 펼치기');
+    });
+
     it('replaces stale visible items with an error state', () => {
         const document = createPanelDocument();
         const controller = createTransactionMapPanel(document);

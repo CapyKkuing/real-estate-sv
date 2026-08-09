@@ -168,6 +168,7 @@ describe("Cloudflare frontend", () => {
     expect(html).toContain('aria-live="polite"')
     expect(style).toMatch(/\.entry-map-stage\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(320px,\s*380px\)/)
     expect(style).toMatch(/@media \(max-width:\s*720px\)[\s\S]*\.transaction-map-panel\s*\{[\s\S]*position:\s*fixed[\s\S]*bottom:\s*0/)
+    expect(style).toMatch(/@media \(max-width:\s*720px\)[\s\S]*\.entry-map-stage\s*\{[\s\S]*position:\s*relative/)
     expect(style).toMatch(/\.transaction-map-panel\.is-collapsed[\s\S]*\.transaction-map-filters[\s\S]*display:\s*none/)
   })
 
